@@ -2,9 +2,10 @@ import rsa
 import secrets
 import json
 import base64
+import os
 from datetime import datetime, timedelta
-from app import db
-from models import License
+from app import db, app
+from models import License, Activation
 
 
 # Generate RSA keys (run once and store securely)
@@ -15,18 +16,25 @@ def generate_keys():
     return pubkey, privkey
 
 
-# Store these keys securely - for demo purposes only
-# In production, store private key in environment variable or secret manager
-try:
-    PRIVATE_KEY = rsa.PrivateKey.load_pkcs1(base64.b64decode(
-        "LS0tLS1CRUdJTiBSU0EgUFJJVkFURSBLRVktLS0tLQpNSUlFb3dJQkFBS0NBUUVBdDRtcXYyQnlxZkJ1YkZSMm53PT0KLS0tLS1FTkQgUlNBIFBSSVZBVEUgS0VZLS0tLS0="
-    ))
-    PUBLIC_KEY = rsa.PublicKey.load_pkcs1(base64.b64decode(
-        "LS0tLS1CRUdJTiBSU0EgUFVCTElDIEtFWS0tLS0tCk1JSUJJakFOQmdrcWhraUc5dzBCQVFFRkFBT0NBUThBTUlJQkNnS0NBUUVBdDRtcXYyQnlxZkJ1YkZSMm53PT0KLS0tLS1FTkQgUlNBIFBVQkxJQyBLRVktLS0tLQ=="
-    ))
-except Exception:
-    # Generate new keys if not available
-    PUBLIC_KEY, PRIVATE_KEY = generate_keys()
+def _load_keys_from_env():
+    pub_pem = os.environ.get("LICENSE_PUBLIC_KEY_PEM")
+    priv_pem = os.environ.get("LICENSE_PRIVATE_KEY_PEM")
+    if pub_pem and priv_pem:
+        try:
+            return (
+                rsa.PublicKey.load_pkcs1(pub_pem.encode()),
+                rsa.PrivateKey.load_pkcs1(priv_pem.encode())
+            )
+        except Exception:
+            pass
+    # Fallback: generate ephemeral keys (log warning)
+    app.logger.warning("Using generated ephemeral RSA keys for licensing; set LICENSE_PUBLIC_KEY_PEM & LICENSE_PRIVATE_KEY_PEM for persistence.")
+    return generate_keys()
+
+PUBLIC_KEY, PRIVATE_KEY = _load_keys_from_env()
+
+# Max activations per license (overridable via env var)
+MAX_ACTIVATIONS = int(os.environ.get("LICENSE_MAX_ACTIVATIONS", "3"))
 
 
 LICENSE_TYPES = {
@@ -141,6 +149,57 @@ def create_user_license(user_id, license_type, stripe_payment_id=None):
     db.session.commit()
     
     return new_license
+
+
+def record_activation(license_obj: License, account_number: str, server: str | None, machine_fingerprint: str | None):
+    """Record a new activation if within limits."""
+    existing = Activation.query.filter_by(license_id=license_obj.id, account_number=account_number).first()
+    if existing:
+        # Update last check
+        existing.last_check_at = datetime.now()
+        db.session.commit()
+        return existing, False
+    count = Activation.query.filter_by(license_id=license_obj.id).count()
+    if count >= MAX_ACTIVATIONS:
+        raise ValueError("Activation limit reached")
+    act = Activation(
+        license_id=license_obj.id,
+        account_number=account_number,
+        server=server,
+        machine_fingerprint=machine_fingerprint,
+        status='active'
+    )
+    db.session.add(act)
+    db.session.commit()
+    return act, True
+
+
+def license_status(license_key: str):
+    """Return status details including activations."""
+    lic = License.query.filter_by(license_key=license_key).first()
+    if not lic:
+        return {"ok": False, "error": "not_found"}
+    is_valid, data = validate_license_key(lic.license_key)
+    if not is_valid:
+        return {"ok": False, "error": data}
+    acts = Activation.query.filter_by(license_id=lic.id).all()
+    return {
+        "ok": True,
+        "license_type": lic.license_type,
+        "expires_at": lic.expires_at.isoformat() if lic.expires_at else None,
+        "status": lic.status,
+        "activations": [
+            {
+                "account_number": a.account_number,
+                "server": a.server,
+                "machine_fingerprint": a.machine_fingerprint,
+                "created_at": a.created_at.isoformat(),
+                "last_check_at": a.last_check_at.isoformat(),
+                "status": a.status
+            } for a in acts
+        ],
+        "activation_limit": MAX_ACTIVATIONS,
+    }
 
 
 def get_active_license(user_id):

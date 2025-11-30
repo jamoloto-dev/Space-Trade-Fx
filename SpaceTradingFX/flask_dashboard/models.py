@@ -66,6 +66,8 @@ class License(db.Model):
     features = db.Column(db.JSON, default=dict)  # Store additional features as JSON
     created_at = db.Column(db.DateTime, default=datetime.now)
     updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
+    # Activation relationship (populated after EA/user binds account/server)
+    activations = db.relationship('Activation', backref='license', lazy=True)
 
 
 # Trading preferences for each user
@@ -121,3 +123,16 @@ class TradingSignal(db.Model):
     timeframe = db.Column(db.String(10), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.now)
     expires_at = db.Column(db.DateTime, nullable=True)
+
+
+# License activations (bind a license to MT5 account/server/machine)
+class Activation(db.Model):
+    __tablename__ = 'license_activations'
+    id = db.Column(db.Integer, primary_key=True)
+    license_id = db.Column(db.Integer, db.ForeignKey('licenses.id'), nullable=False)
+    account_number = db.Column(db.String(50), nullable=False)
+    server = db.Column(db.String(100), nullable=True)
+    machine_fingerprint = db.Column(db.String(128), nullable=True)
+    status = db.Column(db.String(20), default='active')  # 'active', 'revoked'
+    created_at = db.Column(db.DateTime, default=datetime.now)
+    last_check_at = db.Column(db.DateTime, default=datetime.now)

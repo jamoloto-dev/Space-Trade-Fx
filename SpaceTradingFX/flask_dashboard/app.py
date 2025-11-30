@@ -24,6 +24,12 @@ app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
     "pool_recycle": 300,
 }
 
+# Feature flags
+# Enable GPT-5 globally for all clients unless explicitly disabled via env var
+app.config["ENABLE_GPT5_FOR_ALL_CLIENTS"] = (
+    os.environ.get("ENABLE_GPT5_FOR_ALL_CLIENTS", "true").lower() in ("1", "true", "yes")
+)
+
 # Initialize database
 db = SQLAlchemy(app, model_class=Base)
 
@@ -32,6 +38,13 @@ from flask_login import LoginManager
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
 login_manager.login_message = 'Please log in to access this page.'
+
+# Expose feature flags to templates
+@app.context_processor
+def inject_feature_flags():
+    return {
+        "ENABLE_GPT5_FOR_ALL_CLIENTS": app.config.get("ENABLE_GPT5_FOR_ALL_CLIENTS", False)
+    }
 
 @login_manager.user_loader
 def load_user(user_id):

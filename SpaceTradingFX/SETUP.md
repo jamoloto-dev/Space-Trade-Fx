@@ -28,9 +28,27 @@ export DEFAULT_ADMIN_ID="jafta-moloto"
 export AUTH_CLIENT_ID="your-client-id"
 export ISSUER_URL="https://auth.example.com/oidc"
 
+# Feature flags
+export ENABLE_GPT5_FOR_ALL_CLIENTS=true
+export LICENSE_PRIVATE_KEY_PEM="-----BEGIN RSA PRIVATE KEY-----..."
+export LICENSE_PUBLIC_KEY_PEM="-----BEGIN RSA PUBLIC KEY-----..."
+export LICENSE_MAX_ACTIVATIONS=3
+export LICENSE_ACTIVATION_BASE_URL="https://your-domain.com/api/license"
+
 # Start the app (example)
 python SpaceTradingFX/flask_dashboard/main.py
 ```
+
+License activation flow (summary)
+1. User purchases license; Stripe/Ozow webhook creates license record.
+2. User runs EA which calls POST `$LICENSE_ACTIVATION_BASE_URL/activate` with license key + MT5 account.
+3. Server records activation if within `LICENSE_MAX_ACTIVATIONS`.
+4. EA periodically calls GET `$LICENSE_ACTIVATION_BASE_URL/status?license_key=...` to validate.
+5. Admin can revoke license by changing status or (future) revocation endpoint.
+
+MetaTrader setup
+- Add `https://your-domain.com` under Tools → Options → Expert Advisors → Allow WebRequest for listed URL
+- Confirm account number and server captured in Preferences screen so binding succeeds.
 
 Default admin password (development)
 - `DEFAULT_ADMIN_PASSWORD` - Optional. If provided, the seeded default admin will use this password for local login. Only use this for development/testing; do NOT set a plaintext password in production.

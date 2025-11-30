@@ -45,12 +45,19 @@ pip install -e .
 
 ### 3. Environment Variables
 
-Create a `.env` file in the project root:
+Create a `.env` file in the project root (example shown; adjust for production and do NOT commit real secrets):
 
 ```
 SESSION_SECRET=your-secret-key-here
 DATABASE_URL=postgresql://user:password@localhost/trading_db
 # Or use SQLite (default): sqlite:///trading.db
+# Feature flags
+# Enable GPT-5 globally for all clients (default: true)
+ENABLE_GPT5_FOR_ALL_CLIENTS=true
+LICENSE_PRIVATE_KEY_PEM="-----BEGIN RSA PRIVATE KEY-----..."
+LICENSE_PUBLIC_KEY_PEM="-----BEGIN RSA PUBLIC KEY-----..."
+LICENSE_MAX_ACTIVATIONS=3
+LICENSE_ACTIVATION_BASE_URL="https://your-domain.com/api/license"
 ```
 
 ## Running the Application
@@ -108,6 +115,8 @@ pytest tests/ -v
 - ✅ Web dashboard for manual control
 - ✅ Logging with remote transmission
 - ✅ Database persistence (PostgreSQL or SQLite)
+- ✅ Feature flags (e.g., `ENABLE_GPT5_FOR_ALL_CLIENTS`)
+- ✅ License activation & MT5 account binding
 
 ## Dependencies
 
@@ -127,6 +136,8 @@ See `requirements.txt` or `pyproject.toml` for the full list:
 - Do not commit `.env` files with real credentials
 - Use strong, unique license keys for production
 - Store API keys and secrets in environment variables only
+- Provide RSA keys via `LICENSE_PRIVATE_KEY_PEM` / `LICENSE_PUBLIC_KEY_PEM` (avoid hardcoding)
+- Limit activations using `LICENSE_MAX_ACTIVATIONS`; monitor via `/api/license/status`
 
 ## Development
 
@@ -161,6 +172,12 @@ def test_example():
 **Missing dependencies:**
 - Reinstall: `pip install -r requirements.txt`
 - Check Python version: requires Python >= 3.12
+
+**License activation issues:**
+- Add activation base URL to MT5: Tools → Options → Expert Advisors → Allow WebRequest for listed URL (`https://your-domain.com`)
+- Confirm license key matches one issued after payment
+- Ensure MT5 account/server in Preferences matches terminal values
+- Check `/api/license/status?license_key=...` returns `ok:true`
 
 ## License
 
