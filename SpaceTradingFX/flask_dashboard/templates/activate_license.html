@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Activate License - SpaceTradingFX</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: #C84B61;
+            min-height: 100vh;
+            color: #FFFFFF;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 40px 20px;
+        }
+        
+        .logo-small {
+            width: 80px;
+            height: 80px;
+            background: #000;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 30px;
+            border: 3px solid #333;
+        }
+        
+        .logo-small .eyes {
+            display: flex;
+            gap: 15px;
+        }
+        
+        .logo-small .eye {
+            width: 8px;
+            height: 8px;
+            background: #fff;
+            border-radius: 50%;
+        }
+        
+        h1 {
+            font-size: 22px;
+            font-weight: 700;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+        
+        .subtitle {
+            font-size: 14px;
+            color: rgba(255, 255, 255, 0.7);
+            margin-bottom: 40px;
+            text-align: center;
+        }
+        
+        form {
+            width: 100%;
+            max-width: 350px;
+        }
+        
+        .input-group {
+            margin-bottom: 20px;
+        }
+        
+        .input-group label {
+            display: block;
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.7);
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .input-field {
+            width: 100%;
+            background: rgba(255, 255, 255, 0.15);
+            border: none;
+            border-radius: 12px;
+            padding: 18px 20px;
+            color: #FFFFFF;
+            font-size: 18px;
+            text-align: center;
+            letter-spacing: 3px;
+            text-transform: uppercase;
+        }
+        
+        .input-field::placeholder {
+            color: rgba(255, 255, 255, 0.5);
+            letter-spacing: 2px;
+        }
+        
+        .input-field:focus {
+            outline: 2px solid #4CAF50;
+        }
+        
+        .input-hint {
+            font-size: 11px;
+            color: rgba(255, 255, 255, 0.5);
+            margin-top: 6px;
+            text-align: center;
+        }
+        
+        .btn-submit {
+            width: 100%;
+            padding: 18px;
+            background: #4CAF50;
+            border: none;
+            border-radius: 12px;
+            color: #FFFFFF;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 20px;
+            transition: transform 0.2s, background 0.2s;
+        }
+        
+        .btn-submit:active {
+            transform: scale(0.98);
+            background: #43A047;
+        }
+        
+        .btn-secondary {
+            width: 100%;
+            padding: 15px;
+            background: transparent;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 12px;
+            color: #FFFFFF;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 15px;
+            text-decoration: none;
+            transition: background 0.2s;
+        }
+        
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+        
+        .footer {
+            margin-top: 30px;
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.5);
+            text-align: center;
+        }
+        
+        .footer a {
+            color: #FFFFFF;
+            text-decoration: none;
+        }
+        
+        .alert {
+            width: 100%;
+            max-width: 350px;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+        
+        .alert-error {
+            background: rgba(244, 67, 54, 0.2);
+            border: 1px solid #F44336;
+            color: #FFCDD2;
+        }
+        
+        .alert-success {
+            background: rgba(76, 175, 80, 0.2);
+            border: 1px solid #4CAF50;
+            color: #C8E6C9;
+        }
+        
+        .alert-info {
+            background: rgba(33, 150, 243, 0.2);
+            border: 1px solid #2196F3;
+            color: #BBDEFB;
+        }
+        
+        .license-icon {
+            font-size: 50px;
+            margin-bottom: 20px;
+            color: #FFD700;
+        }
+        
+        .user-info {
+            background: rgba(0, 0, 0, 0.2);
+            padding: 12px 20px;
+            border-radius: 10px;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+        
+        .user-info i {
+            margin-right: 8px;
+            color: #4CAF50;
+        }
+    </style>
+</head>
+<body>
+    <div class="logo-small">
+        <div class="eyes">
+            <div class="eye"></div>
+            <div class="eye"></div>
+        </div>
+    </div>
+    
+    <i class="fas fa-key license-icon"></i>
+    
+    <h1>ACTIVATE LICENSE</h1>
+    <p class="subtitle">Enter your license key to start trading</p>
+    
+    <div class="user-info">
+        <i class="fas fa-user"></i>
+        {{ current_user.email }}
+    </div>
+    
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="alert alert-{{ category }}">{{ message }}</div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+    
+    <form method="POST" action="{{ url_for('activate_license') }}">
+        <div class="input-group">
+            <label>License Key</label>
+            <input type="text" name="license_key" class="input-field" 
+                placeholder="XXXX-XXXX-XXXX" 
+                maxlength="14"
+                pattern="[A-Za-z0-9]{4}-[A-Za-z0-9]{4}-[A-Za-z0-9]{4}"
+                required>
+            <p class="input-hint">Format: XXXX-XXXX-XXXX</p>
+        </div>
+        
+        <button type="submit" class="btn-submit">
+            <i class="fas fa-unlock"></i>
+            ACTIVATE
+        </button>
+    </form>
+    
+    <a href="{{ url_for('buy_license') }}" class="btn-secondary">
+        <i class="fas fa-shopping-cart"></i>
+        Buy a License
+    </a>
+    
+    <a href="{{ url_for('logout') }}" class="btn-secondary">
+        <i class="fas fa-sign-out-alt"></i>
+        Logout
+    </a>
+    
+    <p class="footer">
+        Need help? <a href="#">Contact Support</a>
+    </p>
+</body>
+</html>

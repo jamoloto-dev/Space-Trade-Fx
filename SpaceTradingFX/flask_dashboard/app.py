@@ -5,6 +5,11 @@ import os
 from werkzeug.middleware.proxy_fix import ProxyFix
 import logging
 
+# Security imports
+from flask_wtf.csrf import CSRFProtect
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
 
@@ -13,21 +18,30 @@ class Base(DeclarativeBase):
 
 # Initialize Flask app
 app = Flask(__name__)
-app.secret_key = os.environ.get("SESSION_SECRET", "dev-secret-key-change-in-production")
+
+# Load configuration
+from config import get_config
+config_class = get_config()
+app.config.from_object(config_class)
+
+# Validate configuration
+config_errors = config_class.validate()
+if config_errors:
+    for error in config_errors:
+        logging.warning(f"Configuration warning: {error}")
+
 app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
-# Database configuration
-app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL", "sqlite:///trading.db")
-app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
-    'pool_pre_ping': True,
-    "pool_recycle": 300,
-}
+# Initialize CSRF protection
+csrf = CSRFProtect(app)
 
-# Feature flags
-# Enable GPT-5 globally for all clients unless explicitly disabled via env var
-app.config["ENABLE_GPT5_FOR_ALL_CLIENTS"] = (
-    os.environ.get("ENABLE_GPT5_FOR_ALL_CLIENTS", "true").lower() in ("1", "true", "yes")
+# Initialize rate limiter
+limiter = Limiter(
+    key_func=get_remote_address,
+    app=app,
+    default_limits=[app.config.get('RATELIMIT_DEFAULT', '200 per day, 50 per hour')],
+    storage_uri=app.config.get('RATELIMIT_STORAGE_URI', 'memory://'),
+    enabled=app.config.get('RATELIMIT_ENABLED', True)
 )
 
 # Initialize database
@@ -93,3 +107,33 @@ with app.app_context():
     except Exception:
         # If models/User schema isn't present or DB isn't ready, continue silently.
         logging.debug("Could not create default admin user (models may not be ready)")
+
+
+# Health check endpoint for load balancers
+@app.route('/health')
+@limiter.exempt
+def health_check():
+    """Health check endpoint for load balancers and monitoring"""
+    from flask import jsonify
+    try:
+        # Check database connection
+        db.session.execute(db.text('SELECT 1'))
+        return jsonify({
+            'status': 'healthy',
+            'database': 'connected',
+            'version': '1.0.0'
+        }), 200
+    except Exception as e:
+        return jsonify({
+            'status': 'unhealthy',
+            'database': 'disconnected',
+            'error': str(e)
+        }), 503
+
+
+# Exempt certain routes from CSRF (webhooks, APIs that use tokens)
+@csrf.exempt
+@app.route('/payments/webhook', methods=['POST'])
+def payments_webhook_csrf_exempt():
+    """CSRF exempt endpoint - actual logic in payments blueprint"""
+    pass  # Handled by payments blueprint

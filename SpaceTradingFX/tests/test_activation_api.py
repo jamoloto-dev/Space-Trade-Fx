@@ -44,7 +44,7 @@ def test_license_activation_and_status_flow(client):
     payload = {
         'license_key': license_key,
         'account_number': '123456',
-        'server': 'Demo-Server',
+        'server': 'Real-Server',
         'machine_fingerprint': 'fp-abc'
     }
     rv = client.post('/api/license/activate', json=payload)

@@ -1,0 +1,484 @@
+{% extends "mobile_base.html" %}
+
+{% block content %}
+<!-- Profile Header -->
+<div class="profile-header">
+    <div class="avatar">
+        {% if current_user.profile_image_url %}
+        <img src="{{ current_user.profile_image_url }}" alt="Profile">
+        {% else %}
+        <i class="fas fa-user"></i>
+        {% endif %}
+    </div>
+    <h2>{{ current_user.first_name or 'Trader' }} {{ current_user.last_name or '' }}</h2>
+    <p class="email">{{ current_user.email }}</p>
+    
+    {% if current_user.is_mentor %}
+    <div class="mentor-badge">
+        <i class="fas fa-star"></i> MENTOR ID: {{ current_user.mentor_id }}
+    </div>
+    {% endif %}
+</div>
+
+<!-- License Status -->
+<div class="section-card">
+    <div class="section-header">
+        <i class="fas fa-key"></i>
+        <span>LICENSE STATUS</span>
+    </div>
+    {% if license %}
+    <div class="license-info">
+        <div class="license-type {{ license.license_type }}">
+            {{ license.license_type|upper }}
+        </div>
+        <div class="license-details">
+            <div class="detail">
+                <span class="label">Key</span>
+                <span class="value">{{ license.license_key }}</span>
+            </div>
+            <div class="detail">
+                <span class="label">Expires</span>
+                <span class="value">{{ license.expires_at.strftime('%d %b %Y') if license.expires_at else 'Never' }}</span>
+            </div>
+            <div class="detail">
+                <span class="label">Status</span>
+                <span class="value status-{{ license.status }}">{{ license.status|upper }}</span>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <div class="no-license">
+        <p>No active license</p>
+        <a href="{{ url_for('buy_license') }}" class="btn-buy">Get a License</a>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Notification Settings -->
+<form method="POST" action="{{ url_for('mobile_profile') }}">
+    <div class="section-card">
+        <div class="section-header">
+            <i class="fas fa-bell"></i>
+            <span>NOTIFICATIONS</span>
+        </div>
+        
+        <div class="toggle-item">
+            <div class="toggle-info">
+                <span class="toggle-title">Email Notifications</span>
+                <span class="toggle-desc">Receive notifications via email</span>
+            </div>
+            <label class="toggle">
+                <input type="checkbox" name="email_notifications" 
+                    {% if current_user.email_notifications %}checked{% endif %}>
+                <span class="slider"></span>
+            </label>
+        </div>
+        
+        <div class="toggle-item">
+            <div class="toggle-info">
+                <span class="toggle-title">Trade Alerts</span>
+                <span class="toggle-desc">Get notified when trades open/close</span>
+            </div>
+            <label class="toggle">
+                <input type="checkbox" name="trade_alerts" 
+                    {% if current_user.trade_alerts %}checked{% endif %}>
+                <span class="slider"></span>
+            </label>
+        </div>
+        
+        <div class="toggle-item">
+            <div class="toggle-info">
+                <span class="toggle-title">Signal Alerts</span>
+                <span class="toggle-desc">Get notified about new signals</span>
+            </div>
+            <label class="toggle">
+                <input type="checkbox" name="signal_alerts" 
+                    {% if current_user.signal_alerts %}checked{% endif %}>
+                <span class="slider"></span>
+            </label>
+        </div>
+    </div>
+
+    <!-- Mentor Section -->
+    <div class="section-card">
+        <div class="section-header">
+            <i class="fas fa-users"></i>
+            <span>MENTOR PROGRAM</span>
+        </div>
+        
+        {% if current_user.is_mentor %}
+        <div class="mentor-stats">
+            <div class="stat-box">
+                <span class="stat-num">{{ mentor_stats.total_referrals or 0 }}</span>
+                <span class="stat-lbl">Referrals</span>
+            </div>
+            <div class="stat-box">
+                <span class="stat-num">${{ "%.2f"|format(mentor_stats.total_commission or 0) }}</span>
+                <span class="stat-lbl">Earned</span>
+            </div>
+            <div class="stat-box">
+                <span class="stat-num">${{ "%.2f"|format(mentor_stats.pending_commission or 0) }}</span>
+                <span class="stat-lbl">Pending</span>
+            </div>
+        </div>
+        <div class="share-link">
+            <p>Share your mentor ID with friends:</p>
+            <div class="mentor-code">{{ current_user.mentor_id }}</div>
+        </div>
+        {% else %}
+        <div class="become-mentor">
+            <p>Become a mentor and earn 10% commission on referrals!</p>
+            <button type="submit" name="become_mentor" value="1" class="btn-mentor">
+                <i class="fas fa-star"></i> BECOME A MENTOR
+            </button>
+        </div>
+        {% endif %}
+        
+        {% if current_user.referred_by_mentor_id %}
+        <div class="referred-by">
+            <i class="fas fa-link"></i>
+            Referred by Mentor #{{ current_user.referred_by_mentor_id }}
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Save Button -->
+    <button type="submit" class="btn-save">
+        <i class="fas fa-save"></i> SAVE CHANGES
+    </button>
+</form>
+
+<!-- Account Actions -->
+<div class="section-card">
+    <div class="section-header">
+        <i class="fas fa-cog"></i>
+        <span>ACCOUNT</span>
+    </div>
+    
+    <a href="{{ url_for('trading_preferences') }}" class="action-item">
+        <i class="fas fa-sliders-h"></i>
+        <span>Trading Preferences</span>
+        <i class="fas fa-chevron-right"></i>
+    </a>
+    
+    <a href="{{ url_for('view_licenses') }}" class="action-item">
+        <i class="fas fa-key"></i>
+        <span>Manage Licenses</span>
+        <i class="fas fa-chevron-right"></i>
+    </a>
+    
+    <a href="{{ url_for('mobile_history') }}" class="action-item">
+        <i class="fas fa-history"></i>
+        <span>Trade History</span>
+        <i class="fas fa-chevron-right"></i>
+    </a>
+    
+    <a href="{{ url_for('logout') }}" class="action-item logout">
+        <i class="fas fa-sign-out-alt"></i>
+        <span>Logout</span>
+        <i class="fas fa-chevron-right"></i>
+    </a>
+</div>
+
+<style>
+.profile-header {
+    text-align: center;
+    padding: 30px 20px;
+    background: linear-gradient(135deg, #A13D50, #C84B61);
+    border-radius: 20px;
+    margin-bottom: 20px;
+}
+
+.avatar {
+    width: 80px;
+    height: 80px;
+    background: rgba(255,255,255,0.2);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 15px;
+    font-size: 35px;
+    overflow: hidden;
+}
+
+.avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.profile-header h2 {
+    font-size: 22px;
+    margin-bottom: 5px;
+}
+
+.email {
+    color: rgba(255,255,255,0.7);
+    font-size: 14px;
+}
+
+.mentor-badge {
+    display: inline-block;
+    background: #FFD700;
+    color: #000;
+    padding: 8px 15px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 700;
+    margin-top: 15px;
+}
+
+.section-card {
+    background: #1C1C2E;
+    border-radius: 15px;
+    padding: 20px;
+    margin-bottom: 20px;
+}
+
+.section-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 20px;
+    color: rgba(255,255,255,0.7);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 1px;
+}
+
+.section-header i {
+    color: #C84B61;
+}
+
+.license-info {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.license-type {
+    display: inline-block;
+    padding: 10px 20px;
+    border-radius: 10px;
+    font-weight: 700;
+    text-align: center;
+}
+
+.license-type.basic { background: #607D8B; }
+.license-type.premium { background: #FF9800; }
+.license-type.professional { background: #9C27B0; }
+
+.license-details .detail {
+    display: flex;
+    justify-content: space-between;
+    padding: 10px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+}
+
+.license-details .label {
+    color: rgba(255,255,255,0.5);
+}
+
+.status-active { color: #4CAF50; }
+.status-expired { color: #F44336; }
+
+.no-license {
+    text-align: center;
+    padding: 20px;
+}
+
+.btn-buy {
+    display: inline-block;
+    margin-top: 15px;
+    padding: 12px 30px;
+    background: #4CAF50;
+    color: white;
+    text-decoration: none;
+    border-radius: 10px;
+    font-weight: 600;
+}
+
+.toggle-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+}
+
+.toggle-item:last-child { border-bottom: none; }
+
+.toggle-info {
+    flex: 1;
+}
+
+.toggle-title {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 4px;
+}
+
+.toggle-desc {
+    font-size: 12px;
+    color: rgba(255,255,255,0.5);
+}
+
+.toggle {
+    position: relative;
+    width: 50px;
+    height: 28px;
+}
+
+.toggle input { display: none; }
+
+.slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(255,255,255,0.2);
+    border-radius: 28px;
+    transition: 0.3s;
+}
+
+.slider:before {
+    content: '';
+    position: absolute;
+    width: 22px;
+    height: 22px;
+    left: 3px;
+    bottom: 3px;
+    background: white;
+    border-radius: 50%;
+    transition: 0.3s;
+}
+
+.toggle input:checked + .slider {
+    background: #4CAF50;
+}
+
+.toggle input:checked + .slider:before {
+    transform: translateX(22px);
+}
+
+.mentor-stats {
+    display: flex;
+    justify-content: space-around;
+    margin-bottom: 20px;
+}
+
+.stat-box {
+    text-align: center;
+}
+
+.stat-num {
+    display: block;
+    font-size: 24px;
+    font-weight: 700;
+    color: #4CAF50;
+}
+
+.stat-lbl {
+    font-size: 11px;
+    color: rgba(255,255,255,0.5);
+}
+
+.share-link {
+    text-align: center;
+    padding: 15px;
+    background: rgba(0,0,0,0.2);
+    border-radius: 10px;
+}
+
+.share-link p {
+    font-size: 12px;
+    color: rgba(255,255,255,0.6);
+    margin-bottom: 10px;
+}
+
+.mentor-code {
+    font-size: 32px;
+    font-weight: 700;
+    letter-spacing: 5px;
+    color: #FFD700;
+}
+
+.become-mentor {
+    text-align: center;
+}
+
+.become-mentor p {
+    margin-bottom: 15px;
+    color: rgba(255,255,255,0.7);
+}
+
+.btn-mentor {
+    width: 100%;
+    padding: 15px;
+    background: linear-gradient(135deg, #FFD700, #FFA000);
+    border: none;
+    border-radius: 10px;
+    color: #000;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.referred-by {
+    text-align: center;
+    padding: 10px;
+    margin-top: 15px;
+    background: rgba(76, 175, 80, 0.2);
+    border-radius: 10px;
+    color: #4CAF50;
+    font-size: 13px;
+}
+
+.btn-save {
+    width: 100%;
+    padding: 18px;
+    background: #4CAF50;
+    border: none;
+    border-radius: 12px;
+    color: white;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    margin-bottom: 20px;
+}
+
+.action-item {
+    display: flex;
+    align-items: center;
+    padding: 15px 0;
+    color: white;
+    text-decoration: none;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+}
+
+.action-item:last-child { border-bottom: none; }
+
+.action-item i:first-child {
+    width: 30px;
+    color: #C84B61;
+}
+
+.action-item span {
+    flex: 1;
+}
+
+.action-item i:last-child {
+    color: rgba(255,255,255,0.3);
+}
+
+.action-item.logout {
+    color: #F44336;
+}
+
+.action-item.logout i {
+    color: #F44336;
+}
+</style>
+{% endblock %}

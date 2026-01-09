@@ -21,6 +21,7 @@ from license_manager import (
     create_user_license, 
     check_license_valid, 
     require_license,
+    validate_license_key,
     LICENSE_TYPES
 )
 from trading_engine import TradingEngine
@@ -29,17 +30,43 @@ from datetime import datetime
 import os
 
 
+# Default lot sizes for symbols
+DEFAULT_LOT_SIZES = {
+    'EURUSD': 0.02,
+    'GBPUSD': 0.01,
+    'XAUUSD': 0.01,
+    'USDJPY': 0.02,
+    'AUDUSD': 0.01,
+    'USDCAD': 0.01,
+    'USDCHF': 0.01,
+    'NZDUSD': 0.01,
+}
+
+# Common MT5 servers
+COMMON_MT5_SERVERS = [
+    'ICMarkets-Demo',
+    'ICMarkets-Live',
+    'RazorMarkets-Live',
+    'Pepperstone-Demo',
+    'Pepperstone-Live',
+    'XM-Demo',
+    'XM-Real',
+    'FXCM-Demo',
+    'FXCM-Real',
+]
+
+
 # Make session permanent
 @app.before_request
 def make_session_permanent():
     session.permanent = True
 
 
-# Home/Landing page
+# Home/Landing page - Redirect to mobile home
 @app.route('/')
 def index():
     if current_user.is_authenticated:
-        return redirect(url_for('dashboard'))
+        return redirect(url_for('mobile_home'))
     return render_template('landing.html')
 
 
@@ -47,7 +74,12 @@ def index():
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if current_user.is_authenticated:
-        return redirect(url_for('dashboard'))
+        # Check if user has a valid license
+        is_valid, _ = check_license_valid(current_user.id)
+        if is_valid:
+            return redirect(url_for('mobile_home'))
+        else:
+            return redirect(url_for('activate_license'))
     
     if request.method == 'POST':
         email = request.form.get('email')
@@ -75,7 +107,13 @@ def login():
         
         # Log in the user
         login_user(user, remember=True)
-        return redirect(url_for('dashboard'))
+        
+        # Check if user has a valid license
+        is_valid, _ = check_license_valid(user.id)
+        if is_valid:
+            return redirect(url_for('mobile_home'))
+        else:
+            return redirect(url_for('activate_license'))
     
     return render_template('login.html')
 
@@ -169,7 +207,7 @@ def buy_license():
             # Generate new license (demo mode - in production, integrate Stripe)
             new_license = create_user_license(current_user.id, license_type)
             
-            flash(f'{license_type.title()} license created! Your key: {new_license.license_key[:50]}...', 'success')
+            flash(f'{license_type.title()} license created! Your key: {new_license.license_key}', 'success')
             return redirect(url_for('view_licenses'))
         else:
             flash('Please select a license type or enter a valid key', 'error')
@@ -232,7 +270,7 @@ def analyze_markets():
     signals = engine.analyze_markets()
     
     flash(f'Analyzed {len(signals)} currency pairs', 'success')
-    return redirect(url_for('dashboard'))
+    return redirect(url_for('mobile_home'))
 
 
 @app.route('/manual-trade', methods=['POST'])
@@ -260,7 +298,7 @@ def manual_trade():
     else:
         flash('Could not execute trade. Check your settings.', 'error')
     
-    return redirect(url_for('dashboard'))
+    return redirect(url_for('mobile_home'))
 
 
 @app.route('/close-trade/<int:trade_id>', methods=['POST'])
@@ -272,11 +310,11 @@ def close_trade(trade_id):
     # Verify ownership
     if trade.user_id != current_user.id:
         flash('Unauthorized', 'error')
-        return redirect(url_for('dashboard'))
+        return redirect(url_for('mobile_home'))
     
     if trade.status != 'open':
         flash('Trade is already closed', 'error')
-        return redirect(url_for('dashboard'))
+        return redirect(url_for('mobile_home'))
     
     # Close trade
     engine = TradingEngine(current_user.id)
@@ -285,7 +323,7 @@ def close_trade(trade_id):
     db.session.commit()
     
     flash(f'Trade closed. P/L: ${trade.profit_loss:.2f}', 'success')
-    return redirect(url_for('dashboard'))
+    return redirect(url_for('mobile_home'))
 
 
 # API endpoints for AJAX
@@ -335,3 +373,406 @@ def not_found(e):
 @app.errorhandler(500)
 def server_error(e):
     return render_template('error.html', error='Server error'), 500
+
+# =====================================================
+# MOBILE APP ROUTES
+# =====================================================
+
+@app.route('/m/')
+@app.route('/m/home')
+@login_required
+def mobile_home():
+    """Mobile Home Screen - EA Connection Status"""
+    # Check if user has valid license
+    is_valid, license_info = check_license_valid(current_user.id)
+    
+    # Get trading engine
+    engine = TradingEngine(current_user.id)
+    account_summary = engine.get_account_summary()
+    
+    # Get trading preferences
+    preferences = TradingPreference.query.filter_by(user_id=current_user.id).first()
+    
+    return render_template(
+        'mobile_home.html',
+        user=current_user,
+        has_license=is_valid,
+        license=license_info if is_valid else None,
+        account_summary=account_summary,
+        preferences=preferences,
+        active_page='home'
+    )
+
+
+@app.route('/m/quotes', methods=['GET', 'POST'])
+@login_required
+def mobile_quotes():
+    """Mobile Quotes Screen - Trading Symbols Configuration"""
+    # Get or create preferences
+    preferences = TradingPreference.query.filter_by(user_id=current_user.id).first()
+    if not preferences:
+        preferences = TradingPreference(user_id=current_user.id)
+        db.session.add(preferences)
+        db.session.commit()
+    
+    # Available symbols
+    available_pairs = ['EURUSD', 'GBPUSD', 'XAUUSD', 'USDJPY', 'AUDUSD', 'USDCAD', 'USDCHF', 'NZDUSD']
+    
+    if request.method == 'POST':
+        # Get enabled pairs
+        enabled_pairs = request.form.getlist('enabled_pairs')
+        preferences.currency_pairs = enabled_pairs
+        
+        # Get direction preferences and lot sizes
+        direction_prefs = {}
+        lot_sizes = preferences.strategy_settings.get('lot_sizes', {}) if preferences.strategy_settings else {}
+        
+        for pair in available_pairs:
+            direction = request.form.get(f'direction_{pair}', 'BOTH')
+            if direction in ('BOTH', 'BUY', 'SELL'):
+                direction_prefs[pair] = direction
+            
+            lot_size = request.form.get(f'lot_{pair}')
+            if lot_size:
+                try:
+                    lot_sizes[pair] = float(lot_size)
+                except ValueError:
+                    lot_sizes[pair] = DEFAULT_LOT_SIZES.get(pair, 0.01)
+        
+        preferences.direction_preferences = direction_prefs
+        
+        # Save lot sizes in strategy_settings
+        if not preferences.strategy_settings:
+            preferences.strategy_settings = {}
+        preferences.strategy_settings['lot_sizes'] = lot_sizes
+        
+        # Trading enabled toggle
+        preferences.trading_enabled = request.form.get('trading_enabled') == 'on'
+        
+        db.session.commit()
+        flash('Settings saved successfully!', 'success')
+        return redirect(url_for('mobile_quotes'))
+    
+    # Build symbols list with current settings
+    symbols = []
+    lot_sizes = preferences.strategy_settings.get('lot_sizes', {}) if preferences.strategy_settings else {}
+    direction_prefs = preferences.direction_preferences if preferences.direction_preferences else {}
+    
+    for pair in available_pairs:
+        symbols.append({
+            'pair': pair,
+            'enabled': pair in (preferences.currency_pairs or []),
+            'lot_size': lot_sizes.get(pair, DEFAULT_LOT_SIZES.get(pair, 0.01)),
+            'direction': direction_prefs.get(pair, 'BOTH'),
+            'platform': 'MT5'
+        })
+    
+    return render_template(
+        'mobile_quotes.html',
+        symbols=symbols,
+        trading_enabled=preferences.trading_enabled,
+        active_page='quotes'
+    )
+
+
+@app.route('/m/metatrader', methods=['GET', 'POST'])
+@login_required
+def mobile_metatrader():
+    """Mobile MetaTrader Screen - Account Linking"""
+    platform = request.args.get('platform', 'mt5')
+    
+    # Get or create preferences
+    preferences = TradingPreference.query.filter_by(user_id=current_user.id).first()
+    if not preferences:
+        preferences = TradingPreference(user_id=current_user.id)
+        db.session.add(preferences)
+        db.session.commit()
+    
+    if request.method == 'POST':
+        account_number = request.form.get('account_number', '').strip()
+        server = request.form.get('server', '').strip()
+        
+        if account_number:
+            preferences.mt5_account = account_number
+        if server:
+            preferences.mt5_server = server
+        
+        db.session.commit()
+        flash('MT5 account details saved!', 'success')
+        return redirect(url_for('mobile_metatrader'))
+    
+    # Check if connected (has account number)
+    is_connected = bool(preferences.mt5_account)
+    
+    return render_template(
+        'mobile_metatrader.html',
+        preferences=preferences,
+        platform=platform,
+        is_connected=is_connected,
+        common_servers=COMMON_MT5_SERVERS,
+        active_page='metatrader'
+    )
+
+
+@app.route('/activate', methods=['GET', 'POST'])
+@login_required
+def activate_license():
+    """License activation page - shown after login if no license"""
+    # Check if user already has valid license
+    is_valid, license_info = check_license_valid(current_user.id)
+    if is_valid:
+        return redirect(url_for('mobile_home'))
+    
+    if request.method == 'POST':
+        license_key = request.form.get('license_key', '').strip().upper()
+        
+        if not license_key:
+            flash('Please enter a license key', 'error')
+            return render_template('activate_license.html')
+        
+        # Validate the license key
+        is_valid, result = validate_license_key(license_key)
+        
+        if is_valid:
+            # License exists and is valid - check if it belongs to current user
+            existing = License.query.filter_by(license_key=license_key).first()
+            if existing and existing.user_id == current_user.id:
+                flash('License activated successfully!', 'success')
+                return redirect(url_for('mobile_home'))
+            elif existing:
+                flash('This license key belongs to another account', 'error')
+            else:
+                flash('License key not found', 'error')
+        else:
+            flash(f'Invalid license key: {result}', 'error')
+        
+        return render_template('activate_license.html')
+    
+    return render_template('activate_license.html')
+
+
+# Mobile Trade History Page
+@app.route('/m/history')
+@login_required
+def mobile_history():
+    """Mobile trade history page"""
+    filter_type = request.args.get('filter', 'all')
+    
+    # Get all trades for user
+    query = Trade.query.filter_by(user_id=current_user.id)
+    
+    if filter_type == 'open':
+        query = query.filter_by(status='open')
+    elif filter_type == 'closed':
+        query = query.filter_by(status='closed')
+    elif filter_type == 'profit':
+        query = query.filter(Trade.profit_loss >= 0, Trade.status == 'closed')
+    elif filter_type == 'loss':
+        query = query.filter(Trade.profit_loss < 0, Trade.status == 'closed')
+    
+    trades = query.order_by(Trade.opened_at.desc()).all()
+    
+    # Calculate stats
+    closed_trades = Trade.query.filter_by(user_id=current_user.id, status='closed').all()
+    total_trades = len(closed_trades)
+    total_profit = sum(t.profit_loss for t in closed_trades)
+    winning_trades = len([t for t in closed_trades if t.profit_loss >= 0])
+    win_rate = (winning_trades / total_trades * 100) if total_trades > 0 else 0
+    
+    return render_template(
+        'mobile_history.html',
+        trades=trades,
+        filter=filter_type,
+        total_trades=total_trades,
+        total_profit=total_profit,
+        win_rate=round(win_rate, 1),
+        active_page='history'
+    )
+
+
+# Mobile Profile/Settings Page
+@app.route('/m/profile', methods=['GET', 'POST'])
+@login_required
+def mobile_profile():
+    """Mobile profile and settings page"""
+    if request.method == 'POST':
+        # Handle become mentor
+        if request.form.get('become_mentor'):
+            try:
+                from mentor_system import register_as_mentor
+                mentor_id = register_as_mentor(current_user.id)
+                flash(f'You are now a mentor! Your ID is: {mentor_id}', 'success')
+            except Exception as e:
+                flash(f'Could not register as mentor: {e}', 'error')
+        else:
+            # Update notification preferences
+            current_user.email_notifications = 'email_notifications' in request.form
+            current_user.trade_alerts = 'trade_alerts' in request.form
+            current_user.signal_alerts = 'signal_alerts' in request.form
+            db.session.commit()
+            flash('Settings saved!', 'success')
+        
+        return redirect(url_for('mobile_profile'))
+    
+    # Get license info
+    license_obj = License.query.filter_by(
+        user_id=current_user.id, 
+        status='active'
+    ).first()
+    
+    # Get mentor stats if user is a mentor
+    mentor_stats = None
+    if current_user.is_mentor:
+        try:
+            from mentor_system import get_mentor_stats
+            mentor_stats = get_mentor_stats(current_user.id)
+        except:
+            pass
+    
+    return render_template(
+        'mobile_profile.html',
+        license=license_obj,
+        mentor_stats=mentor_stats,
+        active_page='profile'
+    )
+
+
+# Mobile Notifications Page
+@app.route('/m/notifications', methods=['GET', 'POST'])
+@login_required
+def mobile_notifications():
+    """Mobile notifications page"""
+    if request.method == 'POST':
+        action = request.form.get('action')
+        
+        if action == 'mark_read':
+            notification_id = request.form.get('notification_id')
+            try:
+                from notifications import mark_as_read
+                mark_as_read(int(notification_id), current_user.id)
+            except:
+                pass
+        
+        elif action == 'mark_all_read':
+            try:
+                from notifications import mark_all_as_read
+                mark_all_as_read(current_user.id)
+                flash('All notifications marked as read', 'success')
+            except:
+                pass
+        
+        return redirect(url_for('mobile_notifications'))
+    
+    # Get notifications
+    try:
+        from notifications import get_user_notifications, get_unread_count
+        notifications = get_user_notifications(current_user.id, limit=50)
+        unread_count = get_unread_count(current_user.id)
+    except:
+        notifications = []
+        unread_count = 0
+    
+    return render_template(
+        'mobile_notifications.html',
+        notifications=notifications,
+        unread_count=unread_count,
+        active_page='notifications'
+    )
+
+
+# API: Get notifications count
+@app.route('/api/notifications/count')
+@login_required
+def api_notifications_count():
+    """Get unread notifications count"""
+    try:
+        from notifications import get_unread_count
+        count = get_unread_count(current_user.id)
+    except:
+        count = 0
+    return jsonify({'count': count})
+
+
+# API: Create notification (for testing)
+@app.route('/api/notifications/test', methods=['POST'])
+@login_required
+def api_test_notification():
+    """Create a test notification"""
+    try:
+        from notifications import create_notification
+        notification = create_notification(
+            user_id=current_user.id,
+            title="Test Notification",
+            message="This is a test notification from SpaceTradingFX",
+            notification_type='system'
+        )
+        return jsonify({'success': True, 'id': notification.id})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# MT5 API endpoints
+@app.route('/api/mt5/connect', methods=['POST'])
+@login_required
+@require_license
+def api_mt5_connect():
+    """Connect to MT5 account"""
+    data = request.get_json() or {}
+    account = data.get('account')
+    password = data.get('password')
+    server = data.get('server')
+    
+    try:
+        from mt5_connector import MT5Connector
+        connector = MT5Connector(account=int(account), password=password, server=server)
+        if connector.connect():
+            info = connector.get_account_info()
+            return jsonify({'success': True, 'account_info': info})
+        else:
+            return jsonify({'success': False, 'error': connector.get_last_error()})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/mt5/positions')
+@login_required
+@require_license
+def api_mt5_positions():
+    """Get open MT5 positions"""
+    try:
+        from mt5_connector import get_mt5_connector
+        connector = get_mt5_connector()
+        if connector.connected:
+            positions = connector.get_positions()
+            return jsonify({'success': True, 'positions': positions})
+        else:
+            return jsonify({'success': False, 'error': 'Not connected to MT5'})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/mt5/trade', methods=['POST'])
+@login_required
+@require_license
+def api_mt5_trade():
+    """Execute MT5 trade"""
+    data = request.get_json() or {}
+    symbol = data.get('symbol')
+    order_type = data.get('type')  # BUY or SELL
+    volume = data.get('volume', 0.01)
+    sl = data.get('sl')
+    tp = data.get('tp')
+    
+    try:
+        from mt5_connector import get_mt5_connector
+        connector = get_mt5_connector()
+        if connector.connected:
+            result = connector.open_position(symbol, order_type, volume, sl, tp)
+            if result:
+                return jsonify({'success': True, 'trade': result})
+            else:
+                return jsonify({'success': False, 'error': connector.get_last_error()})
+        else:
+            return jsonify({'success': False, 'error': 'Not connected to MT5'})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500

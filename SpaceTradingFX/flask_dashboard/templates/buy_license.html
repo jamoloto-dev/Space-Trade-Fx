@@ -1,45 +1,81 @@
-{% extends "base.html" %}
+{% extends "mobile_base.html" %}
 
 {% block content %}
-<div class="card">
-    <h2>Get Your License</h2>
-    <p style="margin-bottom: 30px;">Choose a license plan or enter an existing license key</p>
-    
-    <!-- License Plans -->
-    <div class="grid" style="margin-bottom: 40px;">
-        {% for type, details in license_types.items() %}
-        <div class="card" style="border: 2px solid #e5e7eb;">
-            <h3 style="text-transform: capitalize; color: #667eea;">{{ type }}</h3>
-            <p style="font-size: 2em; font-weight: bold; margin: 15px 0;">${{ details.price }}</p>
-            <p style="color: #666; margin-bottom: 20px;">per month</p>
-            
-            <ul style="list-style: none; margin-bottom: 20px;">
-                <li style="padding: 8px;">✅ {{ details.max_trades }} concurrent trades</li>
-                {% for feature in details.features %}
-                <li style="padding: 8px;">✅ {{ feature.replace('_', ' ').title() }}</li>
-                {% endfor %}
-            </ul>
-            
-            <form method="POST" action="{{ url_for('buy_license') }}">
-                <input type="hidden" name="license_type" value="{{ type }}">
-                <button type="submit" class="btn btn-success" style="width: 100%;">
-                    Get {{ type.title() }}
-                </button>
-            </form>
+<!-- Header -->
+<header class="app-header">
+    <a href="{{ url_for('mobile_home') }}" class="back-btn">
+        <i class="fas fa-arrow-left"></i>
+    </a>
+    <div>
+        <h1>ADD LICENSE</h1>
+        <div class="subtitle">Activate your trading EA</div>
+    </div>
+</header>
+
+<div class="container">
+    <!-- Enter License Key Section -->
+    <div class="symbol-card" style="border-color: #4CAF50;">
+        <div class="symbol-header">
+            <span class="symbol-name">ACTIVATE KEY</span>
+            <span class="status-dot"></span>
         </div>
-        {% endfor %}
+        
+        <form method="POST" action="{{ url_for('buy_license') }}">
+            <div style="margin: 15px 0;">
+                <textarea name="license_key" rows="3" 
+                    placeholder="Paste your license key here..."
+                    style="width: 100%; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); 
+                        border-radius: 10px; padding: 15px; color: #fff; font-family: monospace; font-size: 14px; resize: none;"></textarea>
+            </div>
+            <button type="submit" class="btn-primary" style="width: 100%; margin: 0;">
+                <i class="fas fa-key"></i>
+                ACTIVATE LICENSE
+            </button>
+        </form>
     </div>
     
-    <hr style="margin: 40px 0; border: none; border-top: 2px solid #e5e7eb;">
+    <div style="text-align: center; margin: 30px 0; color: rgba(255,255,255,0.5); font-size: 14px;">
+        — OR GET A NEW LICENSE —
+    </div>
     
-    <!-- Enter Existing License Key -->
-    <h3 style="margin-bottom: 20px;">Already Have a License Key?</h3>
-    <form method="POST" action="{{ url_for('buy_license') }}">
-        <div class="form-group">
-            <label for="license_key">Enter Your License Key</label>
-            <textarea id="license_key" name="license_key" rows="4" placeholder="Paste your license key here..." style="font-family: monospace;"></textarea>
+    <!-- License Plans -->
+    {% for type, details in license_types.items() %}
+    <div class="symbol-card">
+        <div class="symbol-header">
+            <span class="symbol-name" style="text-transform: uppercase;">{{ type }}</span>
+            <span style="margin-left: auto; font-size: 24px; font-weight: 700; color: #4CAF50;">
+                ${{ details.price }}
+            </span>
         </div>
-        <button type="submit" class="btn" style="width: 100%;">Activate License Key</button>
-    </form>
+        <p style="font-size: 12px; color: rgba(255,255,255,0.5); margin-bottom: 15px;">per month</p>
+        
+        <div class="details" style="flex-wrap: wrap; gap: 10px;">
+            <div class="detail-item" style="flex: 1; min-width: 100px;">
+                <div class="detail-label">MAX TRADES</div>
+                <div class="detail-value">{{ details.max_trades }}</div>
+            </div>
+            <div class="detail-item" style="flex: 2; min-width: 150px;">
+                <div class="detail-label">FEATURES</div>
+                <div class="detail-value" style="font-size: 12px;">
+                    {% for feature in details.features %}
+                    {{ feature.replace('_', ' ').title() }}{% if not loop.last %}, {% endif %}
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        
+        <form method="POST" action="{{ url_for('buy_license') }}" style="margin-top: 15px;">
+            <input type="hidden" name="license_type" value="{{ type }}">
+            <button type="submit" class="btn-primary" style="width: 100%; margin: 0; background: #4CAF50;">
+                <i class="fas fa-shopping-cart"></i>
+                GET {{ type|upper }}
+            </button>
+        </form>
+    </div>
+    {% endfor %}
+    
+    <p style="text-align: center; font-size: 12px; color: rgba(255,255,255,0.5); margin: 20px 0 40px;">
+        Payments are processed securely. Licenses are valid for 30 days.
+    </p>
 </div>
 {% endblock %}

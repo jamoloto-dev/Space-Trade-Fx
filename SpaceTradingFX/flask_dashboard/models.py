@@ -17,6 +17,16 @@ class User(UserMixin, db.Model):
     password_hash = db.Column(db.String, nullable=True)
     is_admin = db.Column(db.Boolean, default=False)
     has_unlimited_premium = db.Column(db.Boolean, default=False)
+    # Mentor/Referral fields
+    mentor_id = db.Column(db.String(3), unique=True, nullable=True)  # 3-digit mentor ID
+    is_mentor = db.Column(db.Boolean, default=False)
+    referred_by_mentor_id = db.Column(db.String(3), nullable=True)  # Who referred this user
+    total_referrals = db.Column(db.Integer, default=0)
+    total_commission = db.Column(db.Float, default=0.0)
+    # Notification preferences
+    email_notifications = db.Column(db.Boolean, default=True)
+    trade_alerts = db.Column(db.Boolean, default=True)
+    signal_alerts = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=datetime.now)
     updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
     
@@ -24,6 +34,7 @@ class User(UserMixin, db.Model):
     licenses = db.relationship('License', backref='user', lazy=True)
     trading_preferences = db.relationship('TradingPreference', backref='user', lazy=True)
     trades = db.relationship('Trade', backref='user', lazy=True)
+    notifications = db.relationship('Notification', backref='user', lazy=True)
 
     def set_password(self, password: str):
         if password is None:
@@ -54,6 +65,11 @@ class OAuth(OAuthConsumerMixin, db.Model):
 # License model for managing user subscriptions
 class License(db.Model):
     __tablename__ = 'licenses'
+    __table_args__ = (
+        db.Index('idx_licenses_user_status', 'user_id', 'status'),
+        db.Index('idx_licenses_expires', 'expires_at'),
+        db.Index('idx_licenses_key', 'license_key'),
+    )
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.String, db.ForeignKey('users.id'), nullable=False)
     license_key = db.Column(db.String(500), unique=True, nullable=False)
@@ -92,6 +108,11 @@ class TradingPreference(db.Model):
 # Trade history and active trades
 class Trade(db.Model):
     __tablename__ = 'trades'
+    __table_args__ = (
+        db.Index('idx_trades_user_status', 'user_id', 'status'),
+        db.Index('idx_trades_opened_at', 'opened_at'),
+        db.Index('idx_trades_user_pair', 'user_id', 'currency_pair'),
+    )
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.String, db.ForeignKey('users.id'), nullable=False)
     currency_pair = db.Column(db.String(10), nullable=False)
@@ -136,3 +157,33 @@ class Activation(db.Model):
     status = db.Column(db.String(20), default='active')  # 'active', 'revoked'
     created_at = db.Column(db.DateTime, default=datetime.now)
     last_check_at = db.Column(db.DateTime, default=datetime.now)
+
+
+# Notification model for user notifications
+class Notification(db.Model):
+    __tablename__ = 'notifications'
+    __table_args__ = (
+        db.Index('idx_notifications_user_read', 'user_id', 'is_read'),
+        db.Index('idx_notifications_created', 'created_at'),
+    )
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.String, db.ForeignKey('users.id'), nullable=False)
+    title = db.Column(db.String(200), nullable=False)
+    message = db.Column(db.Text, nullable=False)
+    type = db.Column(db.String(50), nullable=False)  # 'trade', 'signal', 'license', 'system', 'referral'
+    is_read = db.Column(db.Boolean, default=False)
+    data = db.Column(db.JSON, default=dict)  # Additional data like trade_id, etc.
+    created_at = db.Column(db.DateTime, default=datetime.now)
+
+
+# Referral tracking for mentor commissions
+class Referral(db.Model):
+    __tablename__ = 'referrals'
+    id = db.Column(db.Integer, primary_key=True)
+    mentor_id = db.Column(db.String(3), nullable=False)  # The mentor's ID
+    referred_user_id = db.Column(db.String, db.ForeignKey('users.id'), nullable=False)
+    license_id = db.Column(db.Integer, db.ForeignKey('licenses.id'), nullable=True)
+    commission_amount = db.Column(db.Float, default=0.0)
+    commission_paid = db.Column(db.Boolean, default=False)
+    created_at = db.Column(db.DateTime, default=datetime.now)
+    paid_at = db.Column(db.DateTime, nullable=True)

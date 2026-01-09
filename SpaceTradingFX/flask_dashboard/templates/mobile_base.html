@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>{% block title %}SpaceTradingFX{% endblock %}</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        :root {
+            --primary-bg: #C84B61;
+            --primary-dark: #A13D50;
+            --card-bg: rgba(139, 69, 82, 0.6);
+            --card-border: #4CAF50;
+            --text-primary: #FFFFFF;
+            --text-secondary: rgba(255, 255, 255, 0.7);
+            --accent-green: #4CAF50;
+            --accent-orange: #FF9800;
+            --input-bg: rgba(255, 255, 255, 0.15);
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: var(--primary-bg);
+            min-height: 100vh;
+            color: var(--text-primary);
+            padding-bottom: 80px;
+        }
+        
+        /* Header */
+        .app-header {
+            display: flex;
+            align-items: center;
+            padding: 15px 20px;
+            background: var(--primary-bg);
+        }
+        
+        .app-header .back-btn {
+            font-size: 24px;
+            color: var(--text-primary);
+            text-decoration: none;
+            margin-right: 15px;
+        }
+        
+        .app-header h1 {
+            font-size: 20px;
+            font-weight: 700;
+            letter-spacing: 2px;
+        }
+        
+        .app-header .subtitle {
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-top: 2px;
+        }
+        
+        /* Container */
+        .container {
+            padding: 0 20px;
+        }
+        
+        /* Cards - Trading Symbol Style */
+        .symbol-card {
+            background: var(--card-bg);
+            border: 2px solid var(--card-border);
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 15px;
+        }
+        
+        .symbol-card .symbol-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        
+        .symbol-card .symbol-name {
+            font-size: 22px;
+            font-weight: 700;
+        }
+        
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            background: var(--accent-green);
+            border-radius: 50%;
+            display: inline-block;
+        }
+        
+        .status-dot.inactive {
+            background: #888;
+        }
+        
+        .symbol-card .details {
+            display: flex;
+            justify-content: space-between;
+        }
+        
+        .symbol-card .detail-item {
+            text-align: left;
+        }
+        
+        .symbol-card .detail-label {
+            font-size: 11px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 5px;
+        }
+        
+        .symbol-card .detail-value {
+            font-size: 16px;
+            font-weight: 600;
+        }
+        
+        .symbol-card .detail-value.direction {
+            color: var(--accent-orange);
+        }
+        
+        /* Home Screen - No EA Connected */
+        .home-hero {
+            text-align: center;
+            padding: 40px 20px;
+        }
+        
+        .avatar-container {
+            position: relative;
+            width: 180px;
+            height: 180px;
+            margin: 0 auto 30px;
+        }
+        
+        .avatar {
+            width: 140px;
+            height: 140px;
+            background: #000;
+            border-radius: 50%;
+            margin: 0 auto;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            border: 4px solid #333;
+        }
+        
+        .avatar .eyes {
+            display: flex;
+            gap: 25px;
+        }
+        
+        .avatar .eye {
+            width: 12px;
+            height: 12px;
+            background: #fff;
+            border-radius: 50%;
+        }
+        
+        .avatar-hat {
+            position: absolute;
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 140px;
+            height: 50px;
+            background: #E53935;
+            border-radius: 70px 70px 0 0;
+        }
+        
+        .status-text {
+            font-size: 32px;
+            font-weight: 800;
+            margin-bottom: 10px;
+        }
+        
+        .status-subtext {
+            font-size: 14px;
+            color: var(--text-secondary);
+            letter-spacing: 1px;
+        }
+        
+        /* Action Cards */
+        .action-card {
+            background: var(--input-bg);
+            border-radius: 15px;
+            padding: 20px;
+            margin: 20px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            text-decoration: none;
+            color: var(--text-primary);
+            transition: transform 0.2s;
+        }
+        
+        .action-card:active {
+            transform: scale(0.98);
+        }
+        
+        .action-card .icon {
+            font-size: 24px;
+            width: 40px;
+            text-align: center;
+        }
+        
+        .action-card .content h3 {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 3px;
+        }
+        
+        .action-card .content p {
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+        
+        /* MetaTrader Screen */
+        .platform-toggle {
+            display: flex;
+            margin: 20px;
+            background: rgba(0,0,0,0.2);
+            border-radius: 30px;
+            padding: 5px;
+        }
+        
+        .platform-toggle button {
+            flex: 1;
+            padding: 12px 20px;
+            border: none;
+            background: transparent;
+            color: var(--text-secondary);
+            font-size: 14px;
+            font-weight: 600;
+            border-radius: 25px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .platform-toggle button.active {
+            background: var(--primary-dark);
+            color: var(--text-primary);
+        }
+        
+        .connection-status {
+            text-align: center;
+            padding: 10px 0 20px;
+        }
+        
+        .connection-status .status {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+            color: var(--accent-green);
+            font-weight: 600;
+        }
+        
+        .mt-logo {
+            text-align: center;
+            margin: 20px 0;
+        }
+        
+        .mt-logo img {
+            width: 60px;
+            height: 60px;
+        }
+        
+        .section-title {
+            text-align: center;
+            font-size: 16px;
+            font-weight: 700;
+            letter-spacing: 1px;
+            margin: 20px 0;
+        }
+        
+        /* Form Inputs */
+        .input-group {
+            margin: 15px 20px;
+        }
+        
+        .input-field {
+            width: 100%;
+            background: var(--input-bg);
+            border: none;
+            border-radius: 12px;
+            padding: 18px 20px;
+            color: var(--text-primary);
+            font-size: 16px;
+        }
+        
+        .input-field::placeholder {
+            color: var(--text-secondary);
+        }
+        
+        .input-field:focus {
+            outline: 2px solid var(--accent-green);
+        }
+        
+        .input-with-icon {
+            position: relative;
+        }
+        
+        .input-with-icon .input-field {
+            padding-right: 50px;
+        }
+        
+        .input-with-icon .icon {
+            position: absolute;
+            right: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-secondary);
+            font-size: 20px;
+            cursor: pointer;
+        }
+        
+        .server-select {
+            display: flex;
+            align-items: center;
+            background: var(--input-bg);
+            border-radius: 12px;
+            padding: 15px 20px;
+        }
+        
+        .server-select .server-icon {
+            font-size: 20px;
+            margin-right: 15px;
+            color: var(--text-secondary);
+        }
+        
+        .server-select input {
+            flex: 1;
+            background: transparent;
+            border: none;
+            color: var(--text-primary);
+            font-size: 16px;
+        }
+        
+        .server-select input:focus {
+            outline: none;
+        }
+        
+        .server-select .clear-btn {
+            font-size: 18px;
+            color: var(--text-secondary);
+            cursor: pointer;
+        }
+        
+        /* Primary Button */
+        .btn-primary {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            width: calc(100% - 40px);
+            margin: 30px 20px;
+            padding: 18px;
+            background: var(--primary-dark);
+            border: none;
+            border-radius: 12px;
+            color: var(--text-primary);
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        
+        .btn-primary:active {
+            transform: scale(0.98);
+        }
+        
+        .btn-primary .icon {
+            font-size: 20px;
+        }
+        
+        /* Bottom Navigation */
+        .bottom-nav {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: var(--primary-bg);
+            display: flex;
+            justify-content: space-around;
+            padding: 15px 0 25px;
+            border-top: 1px solid rgba(255,255,255,0.1);
+        }
+        
+        .bottom-nav a {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-decoration: none;
+            color: var(--text-secondary);
+            font-size: 11px;
+            font-weight: 500;
+            gap: 5px;
+            transition: color 0.2s;
+        }
+        
+        .bottom-nav a.active {
+            color: var(--text-primary);
+        }
+        
+        .bottom-nav a i {
+            font-size: 22px;
+        }
+        
+        /* Alerts */
+        .alert {
+            margin: 15px 20px;
+            padding: 15px;
+            border-radius: 10px;
+            font-size: 14px;
+        }
+        
+        .alert-success {
+            background: rgba(76, 175, 80, 0.2);
+            border: 1px solid var(--accent-green);
+            color: var(--accent-green);
+        }
+        
+        .alert-error {
+            background: rgba(244, 67, 54, 0.2);
+            border: 1px solid #F44336;
+            color: #F44336;
+        }
+        
+        .alert-warning {
+            background: rgba(255, 152, 0, 0.2);
+            border: 1px solid var(--accent-orange);
+            color: var(--accent-orange);
+        }
+        
+        /* Lot Size Selector */
+        .lot-size-input {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .lot-size-input button {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            border: 2px solid var(--text-secondary);
+            background: transparent;
+            color: var(--text-primary);
+            font-size: 18px;
+            cursor: pointer;
+        }
+        
+        .lot-size-input input {
+            width: 70px;
+            text-align: center;
+            background: transparent;
+            border: none;
+            color: var(--text-primary);
+            font-size: 18px;
+            font-weight: 600;
+        }
+        
+        /* License Connected Status */
+        .ea-connected {
+            text-align: center;
+            padding: 40px 20px;
+        }
+        
+        .ea-connected .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(76, 175, 80, 0.2);
+            padding: 10px 20px;
+            border-radius: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .ea-connected .license-info {
+            background: var(--card-bg);
+            border-radius: 15px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+        
+        .ea-connected .license-info h3 {
+            color: var(--accent-green);
+            margin-bottom: 10px;
+        }
+        
+        /* Notification Badge */
+        .nav-item-wrapper {
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        
+        .notification-badge {
+            position: absolute;
+            top: -5px;
+            right: -8px;
+            background: #F44336;
+            color: white;
+            font-size: 10px;
+            font-weight: 700;
+            min-width: 18px;
+            height: 18px;
+            border-radius: 9px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0 4px;
+        }
+        
+        /* 5-item nav adjustment */
+        .bottom-nav a {
+            flex: 1;
+            font-size: 10px;
+        }
+        
+        .bottom-nav a i {
+            font-size: 20px;
+        }
+    </style>
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="alert alert-{{ category }}">{{ message }}</div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+    
+    {% block content %}{% endblock %}
+    
+    <!-- Bottom Navigation -->
+    <nav class="bottom-nav">
+        <a href="{{ url_for('mobile_home') }}" class="{% if active_page == 'home' %}active{% endif %}">
+            <i class="fas fa-home"></i>
+            HOME
+        </a>
+        <a href="{{ url_for('mobile_quotes') }}" class="{% if active_page == 'quotes' %}active{% endif %}">
+            <i class="fas fa-chart-line"></i>
+            QUOTES
+        </a>
+        <a href="{{ url_for('mobile_history') }}" class="{% if active_page == 'history' %}active{% endif %}">
+            <i class="fas fa-history"></i>
+            HISTORY
+        </a>
+        <a href="{{ url_for('mobile_notifications') }}" class="{% if active_page == 'notifications' %}active{% endif %} notification-link">
+            <i class="fas fa-bell"></i>
+            <span class="notification-badge" id="notif-badge" style="display: none;"></span>
+            ALERTS
+        </a>
+        <a href="{{ url_for('mobile_profile') }}" class="{% if active_page == 'profile' %}active{% endif %}">
+            <i class="fas fa-user"></i>
+            PROFILE
+        </a>
+    </nav>
+    
+    <script>
+    // Check for unread notifications
+    fetch('/api/notifications/count')
+        .then(r => r.json())
+        .then(data => {
+            if (data.count > 0) {
+                const badge = document.getElementById('notif-badge');
+                badge.textContent = data.count > 9 ? '9+' : data.count;
+                badge.style.display = 'block';
+            }
+        })
+        .catch(() => {});
+    </script>
+    
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

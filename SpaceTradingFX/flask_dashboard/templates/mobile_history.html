@@ -1,0 +1,321 @@
+{% extends "mobile_base.html" %}
+
+{% block content %}
+<!-- Trade History Header -->
+<div class="history-header">
+    <h2>TRADE HISTORY</h2>
+    <div class="summary-stats">
+        <div class="stat">
+            <span class="stat-value {% if total_profit >= 0 %}profit{% else %}loss{% endif %}">
+                {% if total_profit >= 0 %}+{% endif %}${{ "%.2f"|format(total_profit) }}
+            </span>
+            <span class="stat-label">Total P/L</span>
+        </div>
+        <div class="stat">
+            <span class="stat-value">{{ total_trades }}</span>
+            <span class="stat-label">Total Trades</span>
+        </div>
+        <div class="stat">
+            <span class="stat-value">{{ win_rate }}%</span>
+            <span class="stat-label">Win Rate</span>
+        </div>
+    </div>
+</div>
+
+<!-- Filter Tabs -->
+<div class="filter-tabs">
+    <button class="filter-tab {% if filter == 'all' %}active{% endif %}" onclick="filterTrades('all')">ALL</button>
+    <button class="filter-tab {% if filter == 'open' %}active{% endif %}" onclick="filterTrades('open')">OPEN</button>
+    <button class="filter-tab {% if filter == 'closed' %}active{% endif %}" onclick="filterTrades('closed')">CLOSED</button>
+    <button class="filter-tab {% if filter == 'profit' %}active{% endif %}" onclick="filterTrades('profit')">PROFIT</button>
+    <button class="filter-tab {% if filter == 'loss' %}active{% endif %}" onclick="filterTrades('loss')">LOSS</button>
+</div>
+
+<!-- Trade List -->
+<div class="trade-list">
+    {% if trades %}
+        {% for trade in trades %}
+        <div class="trade-card {% if trade.status == 'open' %}open{% endif %}">
+            <div class="trade-header">
+                <div class="trade-pair">
+                    <span class="pair-name">{{ trade.currency_pair }}</span>
+                    <span class="trade-type {{ trade.trade_type|lower }}">{{ trade.trade_type }}</span>
+                </div>
+                <div class="trade-status {{ trade.status }}">
+                    {% if trade.status == 'open' %}
+                    <span class="status-dot"></span>
+                    {% endif %}
+                    {{ trade.status|upper }}
+                </div>
+            </div>
+            
+            <div class="trade-details">
+                <div class="detail-row">
+                    <span class="detail-label">Entry</span>
+                    <span class="detail-value">{{ "%.5f"|format(trade.entry_price) }}</span>
+                </div>
+                {% if trade.exit_price %}
+                <div class="detail-row">
+                    <span class="detail-label">Exit</span>
+                    <span class="detail-value">{{ "%.5f"|format(trade.exit_price) }}</span>
+                </div>
+                {% endif %}
+                <div class="detail-row">
+                    <span class="detail-label">Lot Size</span>
+                    <span class="detail-value">{{ trade.lot_size }}</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">SL / TP</span>
+                    <span class="detail-value">
+                        {{ "%.5f"|format(trade.stop_loss) if trade.stop_loss else '-' }} / 
+                        {{ "%.5f"|format(trade.take_profit) if trade.take_profit else '-' }}
+                    </span>
+                </div>
+            </div>
+            
+            <div class="trade-footer">
+                <div class="trade-time">
+                    <i class="fas fa-clock"></i>
+                    {{ trade.opened_at.strftime('%d %b %Y, %H:%M') if trade.opened_at else 'N/A' }}
+                </div>
+                <div class="trade-pnl {% if trade.profit_loss >= 0 %}profit{% else %}loss{% endif %}">
+                    {% if trade.profit_loss >= 0 %}+{% endif %}${{ "%.2f"|format(trade.profit_loss) }}
+                </div>
+            </div>
+            
+            {% if trade.status == 'open' %}
+            <form action="{{ url_for('close_trade', trade_id=trade.id) }}" method="POST" class="close-form">
+                <button type="submit" class="btn-close-trade">
+                    <i class="fas fa-times"></i> CLOSE TRADE
+                </button>
+            </form>
+            {% endif %}
+        </div>
+        {% endfor %}
+    {% else %}
+        <div class="no-trades">
+            <i class="fas fa-chart-line"></i>
+            <p>No trades found</p>
+            <a href="{{ url_for('mobile_home') }}" class="btn-start-trading">START TRADING</a>
+        </div>
+    {% endif %}
+</div>
+
+<style>
+.history-header {
+    text-align: center;
+    padding: 20px;
+    background: linear-gradient(135deg, #A13D50, #C84B61);
+    border-radius: 15px;
+    margin-bottom: 20px;
+}
+
+.history-header h2 {
+    font-size: 20px;
+    margin-bottom: 20px;
+}
+
+.summary-stats {
+    display: flex;
+    justify-content: space-around;
+}
+
+.stat {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.stat-value {
+    font-size: 20px;
+    font-weight: 700;
+}
+
+.stat-value.profit { color: #4CAF50; }
+.stat-value.loss { color: #F44336; }
+
+.stat-label {
+    font-size: 11px;
+    color: rgba(255,255,255,0.6);
+    margin-top: 4px;
+}
+
+.filter-tabs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 20px;
+    overflow-x: auto;
+    padding-bottom: 10px;
+}
+
+.filter-tab {
+    background: rgba(255,255,255,0.1);
+    border: none;
+    padding: 10px 16px;
+    border-radius: 20px;
+    color: rgba(255,255,255,0.7);
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.filter-tab.active {
+    background: #4CAF50;
+    color: white;
+}
+
+.trade-list {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.trade-card {
+    background: #1C1C2E;
+    border-radius: 15px;
+    padding: 15px;
+    border-left: 4px solid #666;
+}
+
+.trade-card.open {
+    border-left-color: #4CAF50;
+}
+
+.trade-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+}
+
+.pair-name {
+    font-size: 18px;
+    font-weight: 700;
+}
+
+.trade-type {
+    font-size: 12px;
+    padding: 4px 10px;
+    border-radius: 4px;
+    margin-left: 10px;
+    font-weight: 600;
+}
+
+.trade-type.buy { background: #4CAF50; }
+.trade-type.sell { background: #F44336; }
+
+.trade-status {
+    font-size: 11px;
+    color: rgba(255,255,255,0.5);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.trade-status.open { color: #4CAF50; }
+
+.status-dot {
+    width: 8px;
+    height: 8px;
+    background: #4CAF50;
+    border-radius: 50%;
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+.trade-details {
+    background: rgba(0,0,0,0.2);
+    border-radius: 10px;
+    padding: 12px;
+    margin-bottom: 15px;
+}
+
+.detail-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 6px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+
+.detail-row:last-child { border-bottom: none; }
+
+.detail-label {
+    color: rgba(255,255,255,0.5);
+    font-size: 13px;
+}
+
+.detail-value {
+    font-weight: 600;
+    font-size: 13px;
+}
+
+.trade-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.trade-time {
+    font-size: 12px;
+    color: rgba(255,255,255,0.5);
+}
+
+.trade-time i { margin-right: 5px; }
+
+.trade-pnl {
+    font-size: 18px;
+    font-weight: 700;
+}
+
+.trade-pnl.profit { color: #4CAF50; }
+.trade-pnl.loss { color: #F44336; }
+
+.close-form {
+    margin-top: 15px;
+}
+
+.btn-close-trade {
+    width: 100%;
+    padding: 12px;
+    background: #F44336;
+    border: none;
+    border-radius: 10px;
+    color: white;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.no-trades {
+    text-align: center;
+    padding: 50px 20px;
+    color: rgba(255,255,255,0.5);
+}
+
+.no-trades i {
+    font-size: 50px;
+    margin-bottom: 15px;
+}
+
+.btn-start-trading {
+    display: inline-block;
+    margin-top: 20px;
+    padding: 15px 30px;
+    background: #4CAF50;
+    color: white;
+    text-decoration: none;
+    border-radius: 10px;
+    font-weight: 600;
+}
+</style>
+
+<script>
+function filterTrades(filter) {
+    window.location.href = '{{ url_for("mobile_history") }}?filter=' + filter;
+}
+</script>
+{% endblock %}

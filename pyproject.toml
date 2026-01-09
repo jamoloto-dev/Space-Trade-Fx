@@ -1,25 +1,72 @@
 [project]
-name = "repl-nix-workspace"
-version = "0.1.0"
-description = "Add your description here"
-requires-python = ">=3.12"
+name = "SpaceTradingFX"
+version = "1.0.0"
+description = "Automated Forex Trading Platform with Flask Dashboard"
+requires-python = ">=3.10"
+authors = [
+    { name = "SpaceTradingFX Team" }
+]
+readme = "SpaceTradingFX/README.md"
+license = { text = "MIT" }
 dependencies = [
-    "cryptography>=46.0.3",
-    "flask>=3.1.2",
-    "flask-dance>=7.1.0",
+    # Core Flask Framework
+    "flask>=3.1.0",
     "flask-login>=0.6.3",
     "flask-sqlalchemy>=3.1.1",
-    "gunicorn>=23.0.0",
-    "loguru>=0.7.3",
-    "pandas>=2.3.3",
-    "psycopg2-binary>=2.9.11",
-    "pyjwt>=2.10.1",
-    "pysimplegui>=5.0.8.3",
-    "pytest>=8.4.2",
-    "python-dotenv>=1.2.1",
-    "requests>=2.32.5",
-    "rsa>=4.9.1",
-    "schedule>=1.2.2",
-    "sqlalchemy>=2.0.44",
-    "stripe>=13.1.1",
+    "flask-dance>=7.1.0",
+    "werkzeug>=3.0.0",
+    
+    # Database
+    "sqlalchemy>=2.0.0",
+    
+    # Security & Authentication  
+    "cryptography>=42.0.0",
+    "pyjwt>=2.8.0",
+    "rsa>=4.9",
+    
+    # HTTP & API
+    "requests>=2.31.0",
+    
+    # Data Analysis
+    "pandas>=2.0.0",
+    
+    # Logging & Scheduling
+    "loguru>=0.7.0",
+    "schedule>=1.2.0",
+    
+    # Payment Processing
+    "stripe>=8.0.0",
+    
+    # Environment
+    "python-dotenv>=1.0.0",
 ]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+]
+production = [
+    "gunicorn>=21.0.0",
+    "psycopg2-binary>=2.9.0",
+]
+trading = [
+    # MetaTrader5 - Windows only
+    # "MetaTrader5>=5.0.0",
+]
+
+[project.scripts]
+spacetradingfx = "SpaceTradingFX.flask_dashboard.main:main"
+
+[tool.pytest.ini_options]
+testpaths = ["SpaceTradingFX/tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+ignore = ["E501"]

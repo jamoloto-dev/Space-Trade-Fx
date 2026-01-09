@@ -1,0 +1,93 @@
+{% extends "mobile_base.html" %}
+
+{% block content %}
+<!-- Header -->
+<header class="app-header">
+    <a href="{{ url_for('mobile_home') }}" class="back-btn">
+        <i class="fas fa-arrow-left"></i>
+    </a>
+    <div>
+        <h1>QUOTES</h1>
+        <div class="subtitle">{{ symbols|length }} symbols available</div>
+    </div>
+</header>
+
+<div class="container">
+    <form method="POST" action="{{ url_for('mobile_quotes') }}" id="quotesForm">
+        {% for symbol in symbols %}
+        <div class="symbol-card">
+            <div class="symbol-header">
+                <span class="symbol-name">{{ symbol.pair }}</span>
+                <span class="status-dot {% if not symbol.enabled %}inactive{% endif %}"></span>
+                <label style="margin-left: auto; display: flex; align-items: center; cursor: pointer;">
+                    <input type="checkbox" name="enabled_pairs" value="{{ symbol.pair }}" 
+                        {% if symbol.enabled %}checked{% endif %}
+                        style="width: 20px; height: 20px; accent-color: #4CAF50;">
+                </label>
+            </div>
+            <div class="details">
+                <div class="detail-item">
+                    <div class="detail-label">LOT SIZE</div>
+                    <div class="lot-size-input">
+                        <button type="button" onclick="adjustLot('{{ symbol.pair }}', -0.01)">-</button>
+                        <input type="number" name="lot_{{ symbol.pair }}" id="lot_{{ symbol.pair }}" 
+                            value="{{ symbol.lot_size }}" step="0.01" min="0.01" max="10">
+                        <button type="button" onclick="adjustLot('{{ symbol.pair }}', 0.01)">+</button>
+                    </div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">PLATFORM</div>
+                    <div class="detail-value">MT5</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">DIRECTION</div>
+                    <select name="direction_{{ symbol.pair }}" 
+                        style="background: transparent; border: none; color: #FF9800; font-size: 16px; font-weight: 600; cursor: pointer;">
+                        <option value="BOTH" {% if symbol.direction == 'BOTH' %}selected{% endif %} style="color: #000;">BOTH</option>
+                        <option value="BUY" {% if symbol.direction == 'BUY' %}selected{% endif %} style="color: #000;">BUY</option>
+                        <option value="SELL" {% if symbol.direction == 'SELL' %}selected{% endif %} style="color: #000;">SELL</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+        
+        <!-- Trading Toggle -->
+        <div class="symbol-card" style="border-color: {% if trading_enabled %}#4CAF50{% else %}#FF9800{% endif %};">
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+                <div>
+                    <div class="symbol-name">AUTO-TRADING</div>
+                    <div class="detail-label" style="margin-top: 5px;">
+                        {% if trading_enabled %}BOT IS ACTIVE{% else %}BOT IS PAUSED{% endif %}
+                    </div>
+                </div>
+                <label style="position: relative; display: inline-block; width: 60px; height: 34px;">
+                    <input type="checkbox" name="trading_enabled" {% if trading_enabled %}checked{% endif %}
+                        style="opacity: 0; width: 0; height: 0;">
+                    <span style="position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; 
+                        background: {% if trading_enabled %}#4CAF50{% else %}rgba(255,255,255,0.2){% endif %}; 
+                        border-radius: 34px; transition: 0.3s;">
+                        <span style="position: absolute; height: 26px; width: 26px; left: 4px; bottom: 4px; 
+                            background: white; border-radius: 50%; transition: 0.3s;
+                            {% if trading_enabled %}transform: translateX(26px);{% endif %}"></span>
+                    </span>
+                </label>
+            </div>
+        </div>
+        
+        <button type="submit" class="btn-primary">
+            <i class="fas fa-save"></i>
+            SAVE SETTINGS
+        </button>
+    </form>
+</div>
+
+<script>
+function adjustLot(pair, delta) {
+    const input = document.getElementById('lot_' + pair);
+    let value = parseFloat(input.value) + delta;
+    value = Math.max(0.01, Math.min(10, value));
+    input.value = value.toFixed(2);
+}
+</script>
+{% endblock %}

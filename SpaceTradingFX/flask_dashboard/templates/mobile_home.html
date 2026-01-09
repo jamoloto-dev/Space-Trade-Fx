@@ -1,0 +1,134 @@
+{% extends "mobile_base.html" %}
+
+{% block content %}
+<!-- Home Screen -->
+<div class="home-hero">
+    <!-- Avatar with hat -->
+    <div class="avatar-container">
+        <div class="avatar-hat"></div>
+        <div class="avatar" style="margin-top: 30px;">
+            <div class="eyes">
+                <div class="eye"></div>
+                <div class="eye"></div>
+            </div>
+        </div>
+    </div>
+    
+    {% if has_license %}
+    <!-- EA Connected State -->
+    <div class="status-text" style="color: #4CAF50;">EA CONNECTED</div>
+    <div class="status-subtext">YOUR TRADING BOT IS ACTIVE</div>
+    
+    <div style="margin: 30px 0;">
+        <div class="status-badge" style="display: inline-flex; align-items: center; gap: 8px; background: rgba(76, 175, 80, 0.2); padding: 10px 20px; border-radius: 20px;">
+            <span class="status-dot"></span>
+            <span style="color: #4CAF50; font-weight: 600;">{{ license.license_type|upper }} LICENSE</span>
+        </div>
+    </div>
+    
+    <!-- Stats Summary -->
+    <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; margin: 20px; text-align: center;">
+        <div class="symbol-card">
+            <div class="detail-label">TOTAL TRADES</div>
+            <div class="detail-value" style="font-size: 24px;">{{ account_summary.total_trades }}</div>
+        </div>
+        <div class="symbol-card">
+            <div class="detail-label">WIN RATE</div>
+            <div class="detail-value" style="font-size: 24px; color: #4CAF50;">{{ "%.1f"|format(account_summary.win_rate) }}%</div>
+        </div>
+        <div class="symbol-card">
+            <div class="detail-label">ACTIVE TRADES</div>
+            <div class="detail-value" style="font-size: 24px;">{{ account_summary.active_trades }}</div>
+        </div>
+        <div class="symbol-card">
+            <div class="detail-label">PROFIT/LOSS</div>
+            <div class="detail-value" style="font-size: 24px; color: {% if account_summary.total_profit >= 0 %}#4CAF50{% else %}#F44336{% endif %};">
+                ${{ "%.2f"|format(account_summary.total_profit) }}
+            </div>
+        </div>
+    </div>
+    
+    <!-- Trading Status -->
+    {% if preferences and preferences.trading_enabled %}
+    <div class="action-card" style="background: rgba(76, 175, 80, 0.2); border: 1px solid #4CAF50;">
+        <div class="icon"><i class="fas fa-robot"></i></div>
+        <div class="content">
+            <h3>Auto-Trading Active</h3>
+            <p>Bot is monitoring {{ preferences.currency_pairs|length }} pairs</p>
+        </div>
+    </div>
+    {% else %}
+    <a href="{{ url_for('mobile_quotes') }}" class="action-card">
+        <div class="icon"><i class="fas fa-play-circle"></i></div>
+        <div class="content">
+            <h3>Enable Trading</h3>
+            <p>Configure your symbols and start trading</p>
+        </div>
+    </a>
+    {% endif %}
+    
+    <!-- Quick Actions -->
+    <a href="{{ url_for('analyze_markets') }}" class="action-card">
+        <div class="icon"><i class="fas fa-search-dollar"></i></div>
+        <div class="content">
+            <h3>ANALYZE MARKETS</h3>
+            <p>Scan for trading opportunities</p>
+        </div>
+    </a>
+    
+    {% else %}
+    <!-- No EA Connected State -->
+    <div class="status-text">NO EA CONNECTED</div>
+    <div class="status-subtext">ADD A LICENSE KEY TO GET STARTED</div>
+    
+    <a href="{{ url_for('buy_license') }}" class="action-card">
+        <div class="icon">+</div>
+        <div class="content">
+            <h3>ADD A NEW EA</h3>
+            <p>HAVE A VALID LICENSE KEY</p>
+        </div>
+    </a>
+    {% endif %}
+</div>
+
+{% if has_license and account_summary.trades %}
+<!-- Active Trades -->
+<div style="padding: 0 20px;">
+    <h3 style="margin-bottom: 15px; font-size: 14px; letter-spacing: 1px;">ACTIVE TRADES</h3>
+    {% for trade in account_summary.trades %}
+    <div class="symbol-card">
+        <div class="symbol-header">
+            <span class="symbol-name">{{ trade.currency_pair }}</span>
+            <span class="status-dot"></span>
+            <span style="margin-left: auto; padding: 5px 12px; border-radius: 15px; font-size: 12px; font-weight: 600;
+                background: {% if trade.trade_type == 'BUY' %}rgba(76, 175, 80, 0.3){% else %}rgba(244, 67, 54, 0.3){% endif %};
+                color: {% if trade.trade_type == 'BUY' %}#4CAF50{% else %}#F44336{% endif %};">
+                {{ trade.trade_type }}
+            </span>
+        </div>
+        <div class="details">
+            <div class="detail-item">
+                <div class="detail-label">ENTRY</div>
+                <div class="detail-value">{{ "%.5f"|format(trade.entry_price) }}</div>
+            </div>
+            <div class="detail-item">
+                <div class="detail-label">LOT SIZE</div>
+                <div class="detail-value">{{ trade.lot_size }}</div>
+            </div>
+            <div class="detail-item">
+                <div class="detail-label">P/L</div>
+                <div class="detail-value" style="color: {% if trade.profit_loss >= 0 %}#4CAF50{% else %}#F44336{% endif %};">
+                    ${{ "%.2f"|format(trade.profit_loss) }}
+                </div>
+            </div>
+        </div>
+        <form method="POST" action="{{ url_for('close_trade', trade_id=trade.id) }}" style="margin-top: 15px;">
+            <button type="submit" class="btn-primary" style="width: 100%; margin: 0; background: rgba(244, 67, 54, 0.3);">
+                <i class="fas fa-times"></i> CLOSE TRADE
+            </button>
+        </form>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+{% endblock %}

@@ -60,22 +60,35 @@ LICENSE_TYPES = {
 
 
 def generate_license_key(user_id, license_type='basic'):
-    """Generate a cryptographically signed license key"""
+    """Generate a simple 13-character license key"""
     
     if license_type not in LICENSE_TYPES:
         raise ValueError(f"Invalid license type: {license_type}")
     
-    # Generate unique license ID
-    license_id = secrets.token_urlsafe(16)
+    # Generate a simple 13-character alphanumeric key (e.g., STFX-XXXX-XXXX)
+    import string
+    chars = string.ascii_uppercase + string.digits
+    part1 = ''.join(secrets.choice(chars) for _ in range(4))
+    part2 = ''.join(secrets.choice(chars) for _ in range(4))
+    part3 = ''.join(secrets.choice(chars) for _ in range(4))
+    license_key = f"{part1}-{part2}-{part3}"  # Format: XXXX-XXXX-XXXX (14 chars with dashes, 12 without)
+    
+    # Ensure uniqueness in database
+    from models import License as LicenseModel
+    while LicenseModel.query.filter_by(license_key=license_key).first():
+        part1 = ''.join(secrets.choice(chars) for _ in range(4))
+        part2 = ''.join(secrets.choice(chars) for _ in range(4))
+        part3 = ''.join(secrets.choice(chars) for _ in range(4))
+        license_key = f"{part1}-{part2}-{part3}"
     
     # Calculate expiry date
     duration = LICENSE_TYPES[license_type]['duration_days']
     issued_at = datetime.now()
     expires_at = issued_at + timedelta(days=duration)
     
-    # Create license data
+    # Create license data (stored in database, not in key)
     license_data = {
-        "id": license_id,
+        "id": license_key,
         "user_id": user_id,
         "license_type": license_type,
         "issued": issued_at.isoformat(),
@@ -84,41 +97,37 @@ def generate_license_key(user_id, license_type='basic'):
         "max_trades": LICENSE_TYPES[license_type]['max_trades']
     }
     
-    # Serialize and sign
-    data_bytes = json.dumps(license_data).encode('utf-8')
-    signature = rsa.sign(data_bytes, PRIVATE_KEY, 'SHA-256')
-    
-    # Create license key format
-    license_key = f"{base64.b64encode(data_bytes).decode()}.{base64.b64encode(signature).decode()}"
-    
     return license_key, license_data
 
 
 def validate_license_key(license_key):
-    """Validate a license key signature and expiry"""
+    """Validate a license key by checking the database"""
     try:
-        # Split key into data and signature
-        parts = license_key.split('.')
-        if len(parts) != 2:
-            return False, "Invalid license key format"
+        from models import License as LicenseModel
         
-        data_enc, sig_enc = parts
-        data_bytes = base64.b64decode(data_enc)
-        signature = base64.b64decode(sig_enc)
+        # Look up license in database
+        license_record = LicenseModel.query.filter_by(license_key=license_key).first()
         
-        # Verify signature
-        try:
-            rsa.verify(data_bytes, signature, PUBLIC_KEY)
-        except rsa.VerificationError:
-            return False, "Invalid license signature"
+        if not license_record:
+            return False, "License key not found"
         
-        # Parse license data
-        license_data = json.loads(data_bytes.decode('utf-8'))
+        if license_record.status != 'active':
+            return False, f"License is {license_record.status}"
         
         # Check expiry
-        expires_at = datetime.fromisoformat(license_data['expires'])
-        if datetime.now() > expires_at:
+        if license_record.expires_at and datetime.now() > license_record.expires_at:
             return False, "License expired"
+        
+        # Build license data from database record
+        license_data = {
+            "id": license_record.license_key,
+            "user_id": license_record.user_id,
+            "license_type": license_record.license_type,
+            "issued": license_record.issued_at.isoformat() if license_record.issued_at else None,
+            "expires": license_record.expires_at.isoformat() if license_record.expires_at else None,
+            "features": license_record.features or [],
+            "max_trades": license_record.max_active_trades
+        }
         
         return True, license_data
     
