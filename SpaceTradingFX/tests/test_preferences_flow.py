@@ -6,8 +6,9 @@ import pytest
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root / "SpaceTradingFX"))
 
+from flask_dashboard.license_manager import create_user_license
 from flask_dashboard.app import app, db
-from flask_dashboard.models import TradingPreference
+from flask_dashboard.models import TradingPreference, User
 
 
 @pytest.fixture
@@ -26,13 +27,24 @@ def client():
 
 
 def login(client, email='test@example.com'):
-    return client.post('/login', data={'email': email}, follow_redirects=True)
+    with app.app_context():
+        user = User.query.filter_by(email=email).first()
+        if not user:
+            user = User(id=f"test-{email}", email=email, first_name="Test")
+            user.set_password("a-secure-test-password")
+            db.session.add(user)
+            db.session.commit()
 
+    return client.post('/login', data={'email': email, 'password': 'a-secure-test-password'})
 
 def test_preferences_save_direction_preferences(client):
     # Log in (the login route will create the user)
     rv = login(client)
-    assert rv.status_code == 200
+    assert rv.status_code == 302
+
+    with app.app_context():
+        user = User.query.filter_by(email='test@example.com').first()
+        create_user_license(user.id, 'basic')
 
     # Access preferences page
     rv = client.get('/preferences')
@@ -49,15 +61,13 @@ def test_preferences_save_direction_preferences(client):
         'direction_GBPUSD': 'SELL'
     }
 
-    rv = client.post('/preferences', data=data, follow_redirects=True)
-    assert rv.status_code == 200
-
-    # The login route creates id by replacing @ and . with _
-    expected_user_id = 'test_example_com'
+    rv = client.post('/preferences', data=data)
+    assert rv.status_code == 302
 
     # Verify preferences persisted
     with app.app_context():
-        pref = TradingPreference.query.filter_by(user_id=expected_user_id).first()
+        user = User.query.filter_by(email='test@example.com').first()
+        pref = TradingPreference.query.filter_by(user_id=user.id).first()
         assert pref is not None
         assert set(pref.currency_pairs) == set(['EURUSD', 'GBPUSD'])
         assert pref.timeframe == '1H'

@@ -16,8 +16,9 @@ from oauthlib.oauth2.rfc6749.errors import InvalidGrantError
 from sqlalchemy.exc import NoResultFound
 from werkzeug.local import LocalProxy
 
-from app import app, db, login_manager
-from models import OAuth, User
+from .app import app
+from .extensions import db, login_manager
+from .models import OAuth, User
 
 
 class UserSessionStorage(BaseStorage):

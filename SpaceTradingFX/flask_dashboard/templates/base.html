@@ -236,10 +236,10 @@
         <div class="header">
             <h1>🚀 SpaceTradingFX</h1>
             <div class="nav">
-                <a href="{{ url_for('dashboard') }}">Dashboard</a>
-                <a href="{{ url_for('view_licenses') }}">Licenses</a>
-                <a href="{{ url_for('trading_preferences') }}">Settings</a>
-                <a href="{{ url_for('logout') }}">Logout</a>
+                <a href="{{ url_for('trading.dashboard') }}">Dashboard</a>
+                <a href="{{ url_for('auth.view_licenses') }}">Licenses</a>
+                <a href="{{ url_for('trading.preferences') }}">Settings</a>
+                <a href="{{ url_for('auth.logout') }}">Logout</a>
             </div>
         </div>
         {% endif %}

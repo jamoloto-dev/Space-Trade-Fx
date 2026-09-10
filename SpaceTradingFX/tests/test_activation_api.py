@@ -14,6 +14,7 @@ from flask_dashboard.models import User, License  # noqa: E402
 @pytest.fixture
 def client():
     app.config['TESTING'] = True
+    app.config['WTF_CSRF_ENABLED'] = False
     with app.test_client() as client:
         with app.app_context():
             db.drop_all()
@@ -25,13 +26,20 @@ def client():
 
 
 def login(client, email='activation_tester@example.com'):
-    return client.post('/login', data={'email': email}, follow_redirects=True)
+    with app.app_context():
+        user = User.query.filter_by(email=email).first()
+        if not user:
+            user = User(id=f"test-{email}", email=email, first_name="Test")
+            user.set_password("a-secure-test-password")
+            db.session.add(user)
+            db.session.commit()
+    return client.post('/login', data={'email': email, 'password': 'a-secure-test-password'})
 
 
 def test_license_activation_and_status_flow(client):
     # Login creates user
     rv = login(client)
-    assert rv.status_code == 200
+    assert rv.status_code == 302
 
     with app.app_context():
         user = User.query.filter_by(email='activation_tester@example.com').first()
@@ -72,7 +80,7 @@ def test_license_activation_and_status_flow(client):
 def test_revoke_endpoint(client):
     # Login & create user
     rv = login(client)
-    assert rv.status_code == 200
+    assert rv.status_code == 302
     with app.app_context():
         user = User.query.filter_by(email='activation_tester@example.com').first()
         # ensure user is admin for revoke test
@@ -92,4 +100,5 @@ def test_revoke_endpoint(client):
     rv2 = client.get(f'/api/license/status?license_key={license_key}')
     # status may still show ok:true but with status revoked; validate
     status_data = rv2.get_json()
-    assert status_data.get('status') == 'revoked'
+    assert status_data['ok'] is False
+    assert status_data['error'] == 'License is revoked'

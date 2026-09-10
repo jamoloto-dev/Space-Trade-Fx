@@ -138,11 +138,10 @@ class Space_TradingFX:
 
 
 def main():
-    email = "moloto.jafta30@gmail.com"
-    password = "Javalava30%"
-
-    spacefx = Space_TradingFX(email, password)
-    spacefx.pairs()
+    raise RuntimeError(
+        "The legacy mock broker is disabled. Use environment-managed credentials only "
+        "after the broker-adapter security architecture is implemented."
+    )
 
 
 if __name__ == "__main__":

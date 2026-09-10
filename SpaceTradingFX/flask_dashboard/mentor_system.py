@@ -8,9 +8,9 @@ import string
 from datetime import datetime
 import logging
 
-from app import db
-from models import User, License, Referral
-from notifications import notify_new_referral, notify_commission_earned
+from .extensions import db
+from .models import User, License, Referral
+from .notifications import notify_new_referral, notify_commission_earned
 
 logger = logging.getLogger(__name__)
 

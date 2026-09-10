@@ -9,8 +9,8 @@ from email.mime.multipart import MIMEMultipart
 from datetime import datetime
 import logging
 
-from app import db
-from models import Notification, User
+from .extensions import db
+from .models import Notification, User
 
 logger = logging.getLogger(__name__)
 

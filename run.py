@@ -11,13 +11,10 @@ Usage:
 import os
 import sys
 
-# Add flask_dashboard to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'SpaceTradingFX', 'flask_dashboard'))
-
 def main():
     """Run the SpaceTradingFX Flask application"""
-    from app import app  # type: ignore
-    import routes  # type: ignore  # noqa: F401 - Import routes to register them
+    from SpaceTradingFX.flask_dashboard.app import app
+
     
     # Configuration
     debug = os.environ.get('FLASK_DEBUG', 'True').lower() == 'true'

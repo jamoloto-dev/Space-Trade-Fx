@@ -1,15 +1,20 @@
-from flask import Blueprint, request, jsonify, abort
+from flask import Blueprint, request, jsonify
 from flask_login import login_user, logout_user, current_user, login_required
-from app import db, app
-from models import User, License
+from functools import wraps
+
+from .extensions import db
+from .audit import record_audit_event
+from .license_manager import provision_license
+from .models import User, License
+from .plan_catalog import PLANS
+from .extensions import limiter
 from flask import render_template
-import uuid
-import hashlib
 
 bp = Blueprint('admin', __name__, url_prefix='/admin')
 
 
 def admin_required(f):
+    @wraps(f)
     def wrapper(*args, **kwargs):
         if not current_user.is_authenticated:
             return jsonify({'error': 'authentication required'}), 401
@@ -22,6 +27,7 @@ def admin_required(f):
 
 
 @bp.route('/login', methods=['POST'])
+@limiter.limit("5 per hour")
 def admin_login():
     data = request.get_json() or request.form
     email = data.get('email')
@@ -30,10 +36,14 @@ def admin_login():
         return jsonify({'error': 'email and password required'}), 400
     user = User.query.filter_by(email=email).first()
     if not user or not user.check_password(password):
+        record_audit_event("admin.authentication_failed", target_type="user", target_id=str(email)[:254])
+        db.session.commit()
         return jsonify({'error': 'invalid credentials'}), 401
     if not user.is_admin:
         return jsonify({'error': 'not an admin user'}), 403
     login_user(user)
+    record_audit_event("admin.authentication_logged_in", actor_id=user.id, target_type="user", target_id=user.id)
+    db.session.commit()
     return jsonify({'status': 'ok', 'message': 'logged in'})
 
 
@@ -41,6 +51,8 @@ def admin_login():
 @login_required
 @admin_required
 def admin_logout():
+    record_audit_event("admin.authentication_logged_out", actor_id=current_user.id, target_type="user", target_id=current_user.id)
+    db.session.commit()
     logout_user()
     return jsonify({'status': 'ok', 'message': 'logged out'})
 
@@ -70,24 +82,13 @@ def list_licenses():
 def create_license():
     data = request.get_json() or request.form
     user_id = data.get('user_id')
-    license_type = data.get('license_type', 'basic')
-    max_active_trades = int(data.get('max_active_trades', 3))
+    license_type = str(data.get('license_type', ''))
     if not user_id:
         return jsonify({'error': 'user_id required'}), 400
-    lic = License()
-    lic.user_id = user_id
-    # Generate a short 13-character license key if not provided
-    if data.get('license_key'):
-        lic.license_key = data.get('license_key')[:13]
-    else:
-        # Create a short key: 8 random hex chars + 5 from hash
-        short_id = uuid.uuid4().hex[:8].upper()
-        hash_suffix = hashlib.md5(f"{user_id}-{uuid.uuid4().hex}".encode()).hexdigest()[:5].upper()
-        lic.license_key = f"{short_id}{hash_suffix}"
-    lic.license_type = license_type
-    lic.status = data.get('status', 'active')
-    lic.max_active_trades = max_active_trades
-    db.session.add(lic)
+    if license_type not in PLANS or User.query.get(user_id) is None:
+        return jsonify({'error': 'valid user_id and license_type required'}), 400
+    lic = provision_license(user_id, license_type, source="admin", actor_id=current_user.id)
+    record_audit_event("admin.license_created", actor_id=current_user.id, target_type="license", target_id=str(lic.id))
     db.session.commit()
     return jsonify({'status': 'ok', 'license_id': lic.id, 'license_key': lic.license_key})
 
@@ -98,24 +99,19 @@ def create_license():
 def set_license_status(license_id):
     data = request.get_json() or request.form
     status = data.get('status')
-    if not status:
-        return jsonify({'error': 'status required'}), 400
+    if status not in {'pending', 'active', 'expired', 'revoked'}:
+        return jsonify({'error': 'valid status required'}), 400
     lic = License.query.get(license_id)
     if not lic:
         return jsonify({'error': 'license not found'}), 404
     lic.status = status
+    record_audit_event("admin.license_status_changed", actor_id=current_user.id, target_type="license", target_id=str(lic.id), metadata={"status": status})
     db.session.commit()
     return jsonify({'status': 'ok', 'license_id': lic.id, 'new_status': status})
 
 
 @bp.route('/ui')
+@login_required
+@admin_required
 def admin_ui():
     return render_template('admin.html')
-
-
-def register_admin_blueprint():
-    app.register_blueprint(bp)
-
-
-# Register when imported
-register_admin_blueprint()

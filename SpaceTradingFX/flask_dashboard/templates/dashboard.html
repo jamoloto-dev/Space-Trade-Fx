@@ -8,7 +8,7 @@
     <div class="alert alert-warning">
         <strong>⚠️ No Active License</strong><br>
         You need a valid license key to access trading features. 
-        <a href="{{ url_for('buy_license') }}" style="color: #92400e; text-decoration: underline;">Get your license here</a>
+        <a href="{{ url_for('auth.buy_license') }}" style="color: #92400e; text-decoration: underline;">Get your license here</a>
     </div>
     {% else %}
     <div class="alert alert-success">
@@ -44,10 +44,10 @@
 <div class="card">
     <h2>Trading Controls</h2>
     <div style="display: flex; gap: 15px; flex-wrap: wrap;">
-        <a href="{{ url_for('analyze_markets') }}" class="btn btn-success">
+        <a href="{{ url_for('trading.analyze_markets') }}" class="btn btn-success">
             📊 Analyze Markets
         </a>
-        <a href="{{ url_for('trading_preferences') }}" class="btn">
+        <a href="{{ url_for('trading.preferences') }}" class="btn">
             ⚙️ Trading Settings
         </a>
         {% if preferences and preferences.trading_enabled %}
@@ -94,7 +94,8 @@
                 </td>
                 <td>{{ trade.opened_at.strftime('%Y-%m-%d %H:%M') }}</td>
                 <td>
-                    <form method="POST" action="{{ url_for('close_trade', trade_id=trade.id) }}" style="display: inline;">
+                    <form method="POST" action="{{ url_for('trading.close_trade', trade_id=trade.id) }}" style="display: inline;">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <button type="submit" class="btn btn-danger" style="padding: 5px 15px;">Close</button>
                     </form>
                 </td>
@@ -110,7 +111,8 @@
 <!-- Manual Trade Entry -->
 <div class="card">
     <h2>Manual Trade Entry</h2>
-    <form method="POST" action="{{ url_for('manual_trade') }}" style="display: flex; gap: 15px; align-items: end;">
+    <form method="POST" action="{{ url_for('trading.manual_trade') }}" style="display: flex; gap: 15px; align-items: end;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <div class="form-group" style="flex: 1; margin-bottom: 0;">
             <label for="currency_pair">Currency Pair</label>
             <select id="currency_pair" name="currency_pair" required>
@@ -182,7 +184,7 @@
     <p style="margin: 20px 0; color: #666;">
         Activate your license key to start trading
     </p>
-    <a href="{{ url_for('buy_license') }}" class="btn btn-success" style="font-size: 1.2em; padding: 15px 40px;">
+    <a href="{{ url_for('auth.buy_license') }}" class="btn btn-success" style="font-size: 1.2em; padding: 15px 40px;">
         Activate License
     </a>
 </div>

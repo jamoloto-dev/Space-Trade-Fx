@@ -3,7 +3,7 @@
 {% block content %}
 <!-- Header -->
 <header class="app-header">
-    <a href="{{ url_for('mobile_home') }}" class="back-btn">
+    <a href="{{ url_for('mobile.home') }}" class="back-btn">
         <i class="fas fa-arrow-left"></i>
     </a>
     <div>
@@ -13,7 +13,8 @@
 </header>
 
 <div class="container">
-    <form method="POST" action="{{ url_for('mobile_quotes') }}" id="quotesForm">
+    <form method="POST" action="{{ url_for('mobile.quotes') }}" id="quotesForm">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         {% for symbol in symbols %}
         <div class="symbol-card">
             <div class="symbol-header">

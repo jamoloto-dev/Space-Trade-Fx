@@ -84,7 +84,8 @@
             </div>
             
             {% if trade.status == 'open' %}
-            <form action="{{ url_for('close_trade', trade_id=trade.id) }}" method="POST" class="close-form">
+            <form action="{{ url_for('trading.close_trade', trade_id=trade.id) }}" method="POST" class="close-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <button type="submit" class="btn-close-trade">
                     <i class="fas fa-times"></i> CLOSE TRADE
                 </button>
@@ -96,7 +97,7 @@
         <div class="no-trades">
             <i class="fas fa-chart-line"></i>
             <p>No trades found</p>
-            <a href="{{ url_for('mobile_home') }}" class="btn-start-trading">START TRADING</a>
+            <a href="{{ url_for('mobile.home') }}" class="btn-start-trading">START TRADING</a>
         </div>
     {% endif %}
 </div>
@@ -315,7 +316,7 @@
 
 <script>
 function filterTrades(filter) {
-    window.location.href = '{{ url_for("mobile_history") }}?filter=' + filter;
+    window.location.href = '{{ url_for("mobile.history") }}?filter=' + filter;
 }
 </script>
 {% endblock %}

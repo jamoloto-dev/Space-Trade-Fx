@@ -543,24 +543,24 @@
     
     <!-- Bottom Navigation -->
     <nav class="bottom-nav">
-        <a href="{{ url_for('mobile_home') }}" class="{% if active_page == 'home' %}active{% endif %}">
+        <a href="{{ url_for('mobile.home') }}" class="{% if active_page == 'home' %}active{% endif %}">
             <i class="fas fa-home"></i>
             HOME
         </a>
-        <a href="{{ url_for('mobile_quotes') }}" class="{% if active_page == 'quotes' %}active{% endif %}">
+        <a href="{{ url_for('mobile.quotes') }}" class="{% if active_page == 'quotes' %}active{% endif %}">
             <i class="fas fa-chart-line"></i>
             QUOTES
         </a>
-        <a href="{{ url_for('mobile_history') }}" class="{% if active_page == 'history' %}active{% endif %}">
+        <a href="{{ url_for('mobile.history') }}" class="{% if active_page == 'history' %}active{% endif %}">
             <i class="fas fa-history"></i>
             HISTORY
         </a>
-        <a href="{{ url_for('mobile_notifications') }}" class="{% if active_page == 'notifications' %}active{% endif %} notification-link">
+        <a href="{{ url_for('mobile.notifications') }}" class="{% if active_page == 'notifications' %}active{% endif %} notification-link">
             <i class="fas fa-bell"></i>
             <span class="notification-badge" id="notif-badge" style="display: none;"></span>
             ALERTS
         </a>
-        <a href="{{ url_for('mobile_profile') }}" class="{% if active_page == 'profile' %}active{% endif %}">
+        <a href="{{ url_for('mobile.profile') }}" class="{% if active_page == 'profile' %}active{% endif %}">
             <i class="fas fa-user"></i>
             PROFILE
         </a>

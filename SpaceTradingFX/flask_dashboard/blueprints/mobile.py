@@ -38,9 +38,9 @@ COMMON_MT5_SERVERS = [
 @login_required
 def home():
     """Mobile Home Screen - EA Connection Status"""
-    from models import TradingPreference
-    from license_manager import check_license_valid
-    from trading_engine import TradingEngine
+    from ..models import TradingPreference
+    from ..license_manager import check_license_valid
+    from ..trading_engine import TradingEngine
     
     is_valid, license_info = check_license_valid(current_user.id)
     engine = TradingEngine(current_user.id)
@@ -62,8 +62,8 @@ def home():
 @login_required
 def quotes():
     """Mobile Quotes Screen - Trading Symbols Configuration"""
-    from app import db
-    from models import TradingPreference
+    from ..extensions import db
+    from ..models import TradingPreference
     
     preferences = TradingPreference.query.filter_by(user_id=current_user.id).first()
     if not preferences:
@@ -130,8 +130,8 @@ def quotes():
 @login_required
 def metatrader():
     """Mobile MetaTrader Screen - Account Linking"""
-    from app import db
-    from models import TradingPreference
+    from ..extensions import db
+    from ..models import TradingPreference
     
     platform = request.args.get('platform', 'mt5')
     
@@ -171,7 +171,7 @@ def metatrader():
 @login_required
 def history():
     """Mobile trade history page"""
-    from models import Trade
+    from ..models import Trade
     
     filter_type = request.args.get('filter', 'all')
     query = Trade.query.filter_by(user_id=current_user.id)
@@ -208,13 +208,13 @@ def history():
 @login_required
 def profile():
     """Mobile profile and settings page"""
-    from app import db
-    from models import License
+    from ..extensions import db
+    from ..models import License
     
     if request.method == 'POST':
         if request.form.get('become_mentor'):
             try:
-                from mentor_system import register_as_mentor
+                from ..mentor_system import register_as_mentor
                 mentor_id = register_as_mentor(current_user.id)
                 flash(f'You are now a mentor! Your ID is: {mentor_id}', 'success')
             except Exception as e:
@@ -236,7 +236,7 @@ def profile():
     mentor_stats = None
     if current_user.is_mentor:
         try:
-            from mentor_system import get_mentor_stats
+            from ..mentor_system import get_mentor_stats
             mentor_stats = get_mentor_stats(current_user.id)
         except Exception:
             pass
@@ -260,14 +260,14 @@ def notifications():
             notification_id_str = request.form.get('notification_id', '')
             if notification_id_str:
                 try:
-                    from notifications import mark_as_read
+                    from ..notifications import mark_as_read
                     mark_as_read(int(notification_id_str), current_user.id)
                 except Exception:
                     pass
         
         elif action == 'mark_all_read':
             try:
-                from notifications import mark_all_as_read
+                from ..notifications import mark_all_as_read
                 mark_all_as_read(current_user.id)
                 flash('All notifications marked as read', 'success')
             except Exception:
@@ -276,7 +276,7 @@ def notifications():
         return redirect(url_for('mobile.notifications'))
     
     try:
-        from notifications import get_user_notifications, get_unread_count
+        from ..notifications import get_user_notifications, get_unread_count
         user_notifications = get_user_notifications(current_user.id, limit=50)
         unread_count = get_unread_count(current_user.id)
     except Exception:

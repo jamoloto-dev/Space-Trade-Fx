@@ -3,10 +3,9 @@ SpaceTradingFX Blueprints Module
 Organizes routes into logical groups
 """
 
-from flask import Blueprint
+from .secure_auth import auth_bp
 
 # Import blueprints
-from .auth import auth_bp
 from .mobile import mobile_bp
 from .trading import trading_bp
 

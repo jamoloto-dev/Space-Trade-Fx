@@ -163,7 +163,7 @@
     </style>
 </head>
 <body>
-    <a href="{{ url_for('index') }}" class="back-btn">
+    <a href="{{ url_for('auth.index') }}" class="back-btn">
         <i class="fas fa-arrow-left"></i>
     </a>
     
@@ -185,7 +185,8 @@
         {% endif %}
     {% endwith %}
     
-    <form method="POST" action="{{ url_for('login') }}">
+    <form method="POST" action="{{ url_for('auth.login') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <div class="input-group">
             <label>Email Address</label>
             <input type="email" name="email" class="input-field" 
@@ -193,10 +194,8 @@
         </div>
         
         <div class="input-group">
-            <label>Mentor ID (Optional)</label>
-            <input type="text" name="mentor_id" class="input-field" 
-                placeholder="Enter mentor ID if you have one">
-            <p class="input-hint">If you were referred by a mentor, enter their ID</p>
+            <label>Password</label>
+            <input type="password" name="password" class="input-field" required autocomplete="current-password">
         </div>
         
         <button type="submit" class="btn-submit">
@@ -206,7 +205,7 @@
     </form>
     
     <p class="footer">
-        By signing in, you agree to our terms of service
+        New to SpaceTradingFX? <a href="{{ url_for('auth.register') }}">Create an account</a>
     </p>
 </body>
 </html>

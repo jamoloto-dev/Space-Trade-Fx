@@ -239,7 +239,8 @@
         {% endif %}
     {% endwith %}
     
-    <form method="POST" action="{{ url_for('activate_license') }}">
+    <form method="POST" action="{{ url_for('auth.activate_license') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <div class="input-group">
             <label>License Key</label>
             <input type="text" name="license_key" class="input-field" 
@@ -256,12 +257,12 @@
         </button>
     </form>
     
-    <a href="{{ url_for('buy_license') }}" class="btn-secondary">
+    <a href="{{ url_for('auth.buy_license') }}" class="btn-secondary">
         <i class="fas fa-shopping-cart"></i>
         Buy a License
     </a>
     
-    <a href="{{ url_for('logout') }}" class="btn-secondary">
+    <a href="{{ url_for('auth.logout') }}" class="btn-secondary">
         <i class="fas fa-sign-out-alt"></i>
         Logout
     </a>

@@ -2,16 +2,28 @@
 Trading Blueprint
 Handles trading operations, preferences, and API endpoints
 """
-from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify
+from decimal import Decimal, InvalidOperation
+
+from flask import Blueprint, current_app, render_template, request, redirect, url_for, flash, jsonify
 from flask_login import current_user, login_required
 
 trading_bp = Blueprint('trading', __name__)
 
 
+def _paper_only_response():
+    """This product deliberately has no browser-to-MT5 execution path."""
+    current_app.logger.warning("Blocked live MT5 API request for user %s", current_user.id)
+    return jsonify({
+        "success": False,
+        "error": "Live broker execution is disabled. SpaceTradingFX currently supports paper trading only.",
+        "execution_mode": "paper",
+    }), 409
+
+
 def require_license(f):
     """Decorator to require a valid license for a route"""
     from functools import wraps
-    from license_manager import check_license_valid
+    from ..license_manager import check_license_valid
     
     @wraps(f)
     def decorated_function(*args, **kwargs):
@@ -34,9 +46,9 @@ def require_license(f):
 @require_license
 def dashboard():
     """Main trading dashboard"""
-    from models import Trade, TradingSignal
-    from trading_engine import TradingEngine
-    from license_manager import check_license_valid
+    from ..models import Trade, TradingSignal
+    from ..trading_engine import TradingEngine
+    from ..license_manager import check_license_valid
     
     is_valid, license_info = check_license_valid(current_user.id)
     engine = TradingEngine(current_user.id)
@@ -60,8 +72,8 @@ def dashboard():
 @require_license
 def preferences():
     """Trading preferences page"""
-    from app import db
-    from models import TradingPreference
+    from ..extensions import db
+    from ..models import TradingPreference
     
     prefs = TradingPreference.query.filter_by(user_id=current_user.id).first()
     
@@ -75,8 +87,17 @@ def preferences():
         currency_pairs = request.form.getlist('currency_pairs')
         prefs.currency_pairs = currency_pairs
         prefs.timeframe = request.form.get('timeframe', '1H')
-        prefs.risk_percentage = float(request.form.get('risk_percentage', 1.0))
-        prefs.max_concurrent_trades = int(request.form.get('max_concurrent_trades', 3))
+        try:
+            risk_percentage = Decimal(request.form.get('risk_percentage', '1.0'))
+            max_concurrent_trades = int(request.form.get('max_concurrent_trades', '3'))
+        except (InvalidOperation, ValueError):
+            flash('Enter valid risk and trade-limit values.', 'error')
+            return redirect(url_for('trading.preferences'))
+        if not Decimal('0') < risk_percentage <= Decimal('2') or not 1 <= max_concurrent_trades <= 20:
+            flash('Risk must be between 0 and 2%; trade limit must be between 1 and 20.', 'error')
+            return redirect(url_for('trading.preferences'))
+        prefs.risk_percentage = risk_percentage
+        prefs.max_concurrent_trades = max_concurrent_trades
         prefs.trading_enabled = request.form.get('trading_enabled') == 'on'
         
         direction_prefs = {}
@@ -108,7 +129,7 @@ def preferences():
 @require_license
 def analyze_markets():
     """Analyze markets and generate signals"""
-    from trading_engine import TradingEngine
+    from ..trading_engine import TradingEngine
     
     engine = TradingEngine(current_user.id)
     signals = engine.analyze_markets()
@@ -122,8 +143,8 @@ def analyze_markets():
 @require_license
 def manual_trade():
     """Execute a manual trade"""
-    from trading_engine import TradingEngine
-    from forex_data import get_forex_provider
+    from ..trading_engine import TradingEngine
+    from ..forex_data import get_forex_provider
     
     currency_pair = request.form.get('currency_pair')
     trade_type = request.form.get('trade_type')
@@ -136,12 +157,13 @@ def manual_trade():
     forex_provider = get_forex_provider()
     signal_data = forex_provider.analyze_signal(currency_pair)
     
-    trade = engine.execute_trade(currency_pair, trade_type, signal_data)
-    
-    if trade:
-        flash(f'Trade opened: {currency_pair} {trade_type}', 'success')
+    try:
+        trade = engine.execute_trade(currency_pair, trade_type, signal_data)
+    except (ValueError, RuntimeError) as exc:
+        current_app.logger.info("Rejected paper trade for user %s: %s", current_user.id, exc)
+        flash(f'Paper trade was not opened: {exc}', 'error')
     else:
-        flash('Could not execute trade. Check your settings.', 'error')
+        flash(f'Paper trade opened: {trade.currency_pair} {trade.trade_type}', 'success')
     
     return redirect(url_for('mobile.home'))
 
@@ -151,9 +173,9 @@ def manual_trade():
 @require_license
 def close_trade(trade_id):
     """Close an open trade"""
-    from app import db
-    from models import Trade
-    from trading_engine import TradingEngine
+    from ..extensions import db
+    from ..models import Trade
+    from ..trading_engine import TradingEngine
     
     trade = Trade.query.get_or_404(trade_id)
     
@@ -166,8 +188,12 @@ def close_trade(trade_id):
         return redirect(url_for('mobile.home'))
     
     engine = TradingEngine(current_user.id)
-    current_price = engine._get_current_price(trade.currency_pair)
-    engine._close_trade(trade, current_price)
+    try:
+        current_price = engine._get_current_price(trade.currency_pair)
+        engine._close_trade(trade, current_price)
+    except RuntimeError:
+        flash('Paper trade could not be closed because market data is unavailable.', 'error')
+        return redirect(url_for('mobile.home'))
     db.session.commit()
     
     flash(f'Trade closed. P/L: ${trade.profit_loss:.2f}', 'success')
@@ -182,7 +208,7 @@ def close_trade(trade_id):
 @login_required
 def api_account_summary():
     """Get account summary via API"""
-    from trading_engine import TradingEngine
+    from ..trading_engine import TradingEngine
     
     engine = TradingEngine(current_user.id)
     summary = engine.get_account_summary()
@@ -205,7 +231,7 @@ def api_account_summary():
 @login_required
 def api_forex_data(currency_pair):
     """Get forex data for a currency pair"""
-    from forex_data import get_forex_provider
+    from ..forex_data import get_forex_provider
     
     forex_provider = get_forex_provider()
     data = forex_provider.get_forex_intraday(currency_pair[:3], currency_pair[3:])
@@ -216,7 +242,7 @@ def api_forex_data(currency_pair):
 @login_required
 def api_market_signal(currency_pair):
     """Get market signal for a currency pair"""
-    from forex_data import get_forex_provider
+    from ..forex_data import get_forex_provider
     
     forex_provider = get_forex_provider()
     signal = forex_provider.analyze_signal(currency_pair)
@@ -228,7 +254,7 @@ def api_market_signal(currency_pair):
 def api_notifications_count():
     """Get unread notifications count"""
     try:
-        from notifications import get_unread_count
+        from ..notifications import get_unread_count
         count = get_unread_count(current_user.id)
     except Exception:
         count = 0
@@ -240,7 +266,7 @@ def api_notifications_count():
 def api_test_notification():
     """Create a test notification"""
     try:
-        from notifications import create_notification
+        from ..notifications import create_notification
         notification = create_notification(
             user_id=current_user.id,
             title="Test Notification",
@@ -256,76 +282,24 @@ def api_test_notification():
 @login_required
 @require_license
 def api_mt5_connect():
-    """Connect to MT5 account"""
-    data = request.get_json() or {}
-    account = data.get('account')
-    password = data.get('password')
-    server = data.get('server')
-    
-    if not account or not password or not server:
-        return jsonify({'success': False, 'error': 'account, password, and server are required'}), 400
-    
-    try:
-        from mt5_connector import MT5Connector
-        account_int: int = int(account)  # type: ignore
-        connector = MT5Connector(account=account_int, password=str(password), server=str(server))
-        if connector.connect():
-            info = connector.get_account_info()
-            return jsonify({'success': True, 'account_info': info})
-        else:
-            return jsonify({'success': False, 'error': connector.get_last_error()})
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+    """Disabled: do not accept or process raw broker credentials."""
+    return _paper_only_response()
 
 
 @trading_bp.route('/api/mt5/positions')
 @login_required
 @require_license
 def api_mt5_positions():
-    """Get open MT5 positions"""
-    try:
-        from mt5_connector import get_mt5_connector
-        connector = get_mt5_connector()
-        if connector.connected:
-            positions = connector.get_positions()
-            return jsonify({'success': True, 'positions': positions})
-        else:
-            return jsonify({'success': False, 'error': 'Not connected to MT5'})
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+    """Disabled until an audited read-only broker adapter exists."""
+    return _paper_only_response()
 
 
 @trading_bp.route('/api/mt5/trade', methods=['POST'])
 @login_required
 @require_license
 def api_mt5_trade():
-    """Execute MT5 trade"""
-    data = request.get_json() or {}
-    symbol = data.get('symbol')
-    order_type = data.get('type')
-    volume = data.get('volume', 0.01)
-    sl = data.get('sl')
-    tp = data.get('tp')
-    
-    if not symbol or not order_type:
-        return jsonify({'success': False, 'error': 'symbol and type are required'}), 400
-    
-    symbol_str: str = str(symbol)
-    order_type_str: str = str(order_type)
-    
-    try:
-        from mt5_connector import get_mt5_connector
-        connector = get_mt5_connector()
-        if connector.connected:
-            result = connector.open_position(symbol_str, order_type_str, volume, sl, tp)
-            if result:
-                return jsonify({'success': True, 'trade': result})
-            else:
-                return jsonify({'success': False, 'error': connector.get_last_error()})
-        else:
-            return jsonify({'success': False, 'error': 'Not connected to MT5'})
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+    """Disabled: no HTTP endpoint can submit a broker order."""
+    return _paper_only_response()
 
 
 # Error handlers for the blueprint

@@ -6,7 +6,7 @@ Aggregates all business logic services
 # Import all service modules for easy access
 # These are re-exported for backward compatibility
 
-from notifications import (  # type: ignore
+from ..notifications import (
     create_notification,
     get_user_notifications,
     get_unread_count,
@@ -21,7 +21,7 @@ from notifications import (  # type: ignore
     notify_commission_earned
 )
 
-from mentor_system import (  # type: ignore
+from ..mentor_system import (
     generate_mentor_id,
     register_as_mentor,
     get_mentor_by_id,
@@ -32,20 +32,20 @@ from mentor_system import (  # type: ignore
     LICENSE_PRICES as MENTOR_LICENSE_PRICES
 )
 
-from mt5_connector import (  # type: ignore
+from ..mt5_connector import (
     MT5Connector,
     MT5_AVAILABLE,
     get_mt5_connector
 )
 
-from trading_engine import TradingEngine  # type: ignore
+from ..trading_engine import TradingEngine
 
-from forex_data import (  # type: ignore
+from ..forex_data import (
     ForexDataProvider,
     get_forex_provider
 )
 
-from license_manager import (  # type: ignore
+from ..license_manager import (
     generate_license_key,
     validate_license_key,
     create_user_license,

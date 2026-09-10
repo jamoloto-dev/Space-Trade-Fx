@@ -49,13 +49,14 @@
     {% else %}
     <div class="no-license">
         <p>No active license</p>
-        <a href="{{ url_for('buy_license') }}" class="btn-buy">Get a License</a>
+        <a href="{{ url_for('auth.buy_license') }}" class="btn-buy">Get a License</a>
     </div>
     {% endif %}
 </div>
 
 <!-- Notification Settings -->
-<form method="POST" action="{{ url_for('mobile_profile') }}">
+<form method="POST" action="{{ url_for('mobile.profile') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="section-card">
         <div class="section-header">
             <i class="fas fa-bell"></i>
@@ -155,25 +156,25 @@
         <span>ACCOUNT</span>
     </div>
     
-    <a href="{{ url_for('trading_preferences') }}" class="action-item">
+    <a href="{{ url_for('trading.preferences') }}" class="action-item">
         <i class="fas fa-sliders-h"></i>
         <span>Trading Preferences</span>
         <i class="fas fa-chevron-right"></i>
     </a>
     
-    <a href="{{ url_for('view_licenses') }}" class="action-item">
+    <a href="{{ url_for('auth.view_licenses') }}" class="action-item">
         <i class="fas fa-key"></i>
         <span>Manage Licenses</span>
         <i class="fas fa-chevron-right"></i>
     </a>
     
-    <a href="{{ url_for('mobile_history') }}" class="action-item">
+    <a href="{{ url_for('mobile.history') }}" class="action-item">
         <i class="fas fa-history"></i>
         <span>Trade History</span>
         <i class="fas fa-chevron-right"></i>
     </a>
     
-    <a href="{{ url_for('logout') }}" class="action-item logout">
+    <a href="{{ url_for('auth.logout') }}" class="action-item logout">
         <i class="fas fa-sign-out-alt"></i>
         <span>Logout</span>
         <i class="fas fa-chevron-right"></i>

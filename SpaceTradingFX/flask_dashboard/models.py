@@ -1,16 +1,21 @@
-from datetime import datetime
-from app import db
+from datetime import datetime, timezone
+from .extensions import db
 from flask_dance.consumer.storage.sqla import OAuthConsumerMixin
 from flask_login import UserMixin
-from sqlalchemy import UniqueConstraint
+from sqlalchemy import CheckConstraint, Numeric, UniqueConstraint
 from werkzeug.security import generate_password_hash, check_password_hash
 
 
 # User model (mandatory for Replit Auth)
+def utcnow() -> datetime:
+    """Return an aware UTC value for every new persisted timestamp."""
+    return datetime.now(timezone.utc)
+
+
 class User(UserMixin, db.Model):
     __tablename__ = 'users'
     id = db.Column(db.String, primary_key=True)
-    email = db.Column(db.String, unique=True, nullable=True)
+    email = db.Column(db.String, unique=True, nullable=False)
     first_name = db.Column(db.String, nullable=True)
     last_name = db.Column(db.String, nullable=True)
     profile_image_url = db.Column(db.String, nullable=True)
@@ -22,17 +27,17 @@ class User(UserMixin, db.Model):
     is_mentor = db.Column(db.Boolean, default=False)
     referred_by_mentor_id = db.Column(db.String(3), nullable=True)  # Who referred this user
     total_referrals = db.Column(db.Integer, default=0)
-    total_commission = db.Column(db.Float, default=0.0)
+    total_commission = db.Column(Numeric(18, 2), default=0, nullable=False)
     # Notification preferences
     email_notifications = db.Column(db.Boolean, default=True)
     trade_alerts = db.Column(db.Boolean, default=True)
     signal_alerts = db.Column(db.Boolean, default=True)
-    created_at = db.Column(db.DateTime, default=datetime.now)
-    updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
+    created_at = db.Column(db.DateTime(timezone=True), default=utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
     
     # Relationships
     licenses = db.relationship('License', backref='user', lazy=True)
-    trading_preferences = db.relationship('TradingPreference', backref='user', lazy=True)
+    trading_preferences = db.relationship('TradingPreference', backref='user', uselist=False, lazy=True)
     trades = db.relationship('Trade', backref='user', lazy=True)
     notifications = db.relationship('Notification', backref='user', lazy=True)
 
@@ -66,6 +71,7 @@ class OAuth(OAuthConsumerMixin, db.Model):
 class License(db.Model):
     __tablename__ = 'licenses'
     __table_args__ = (
+        CheckConstraint("status IN ('pending', 'active', 'expired', 'revoked')", name="ck_licenses_status"),
         db.Index('idx_licenses_user_status', 'user_id', 'status'),
         db.Index('idx_licenses_expires', 'expires_at'),
         db.Index('idx_licenses_key', 'license_key'),
@@ -75,13 +81,13 @@ class License(db.Model):
     license_key = db.Column(db.String(500), unique=True, nullable=False)
     license_type = db.Column(db.String(50), nullable=False)  # 'basic', 'premium', 'professional'
     status = db.Column(db.String(20), default='pending')  # 'pending', 'active', 'expired', 'revoked'
-    issued_at = db.Column(db.DateTime, default=datetime.now)
-    expires_at = db.Column(db.DateTime, nullable=True)
-    stripe_payment_id = db.Column(db.String(100), nullable=True)
+    issued_at = db.Column(db.DateTime(timezone=True), default=utcnow, nullable=False)
+    expires_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    stripe_payment_id = db.Column(db.String(255), unique=True, nullable=True)
     max_active_trades = db.Column(db.Integer, default=3)
     features = db.Column(db.JSON, default=dict)  # Store additional features as JSON
-    created_at = db.Column(db.DateTime, default=datetime.now)
-    updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
+    created_at = db.Column(db.DateTime(timezone=True), default=utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
     # Activation relationship (populated after EA/user binds account/server)
     activations = db.relationship('Activation', backref='license', lazy=True)
 
@@ -89,11 +95,16 @@ class License(db.Model):
 # Trading preferences for each user
 class TradingPreference(db.Model):
     __tablename__ = 'trading_preferences'
+    __table_args__ = (
+        UniqueConstraint('user_id', name='uq_trading_preferences_user'),
+        CheckConstraint('risk_percentage > 0 AND risk_percentage <= 2', name='ck_trading_preferences_risk'),
+        CheckConstraint('max_concurrent_trades >= 1 AND max_concurrent_trades <= 20', name='ck_trading_preferences_trade_limit'),
+    )
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.String, db.ForeignKey('users.id'), nullable=False)
     currency_pairs = db.Column(db.JSON, default=list)  # ['EURUSD', 'GBPUSD', etc.]
     timeframe = db.Column(db.String(10), default='1H')  # '1M', '5M', '15M', '1H', '4H', 'D'
-    risk_percentage = db.Column(db.Float, default=1.0)  # Risk per trade as % of account
+    risk_percentage = db.Column(Numeric(5, 2), default=1, nullable=False)  # Risk per paper trade as % of account
     max_concurrent_trades = db.Column(db.Integer, default=3)
     trading_enabled = db.Column(db.Boolean, default=False)
     mt5_account = db.Column(db.String(100), nullable=True)
@@ -101,14 +112,17 @@ class TradingPreference(db.Model):
     strategy_settings = db.Column(db.JSON, default=dict)  # Store strategy parameters
     # Per-currency direction preferences: { 'EURUSD': 'BOTH'|'BUY'|'SELL' }
     direction_preferences = db.Column(db.JSON, default=dict)
-    created_at = db.Column(db.DateTime, default=datetime.now)
-    updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
+    created_at = db.Column(db.DateTime(timezone=True), default=utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
 
 
 # Trade history and active trades
 class Trade(db.Model):
     __tablename__ = 'trades'
     __table_args__ = (
+        CheckConstraint("status IN ('draft', 'validated', 'open', 'closing', 'closed', 'rejected', 'failed')", name="ck_trades_status"),
+        CheckConstraint("trade_type IN ('BUY', 'SELL')", name="ck_trades_direction"),
+        CheckConstraint("execution_mode = 'paper'", name="ck_trades_paper_only"),
         db.Index('idx_trades_user_status', 'user_id', 'status'),
         db.Index('idx_trades_opened_at', 'opened_at'),
         db.Index('idx_trades_user_pair', 'user_id', 'currency_pair'),
@@ -117,19 +131,20 @@ class Trade(db.Model):
     user_id = db.Column(db.String, db.ForeignKey('users.id'), nullable=False)
     currency_pair = db.Column(db.String(10), nullable=False)
     trade_type = db.Column(db.String(10), nullable=False)  # 'BUY' or 'SELL'
-    entry_price = db.Column(db.Float, nullable=False)
-    exit_price = db.Column(db.Float, nullable=True)
-    lot_size = db.Column(db.Float, nullable=False)
-    stop_loss = db.Column(db.Float, nullable=True)
-    take_profit = db.Column(db.Float, nullable=True)
-    status = db.Column(db.String(20), default='open')  # 'open', 'closed', 'cancelled'
-    profit_loss = db.Column(db.Float, default=0.0)
-    mt5_ticket = db.Column(db.String(50), nullable=True)  # MetaTrader ticket ID
-    opened_at = db.Column(db.DateTime, default=datetime.now)
-    closed_at = db.Column(db.DateTime, nullable=True)
+    entry_price = db.Column(Numeric(20, 10), nullable=False)
+    exit_price = db.Column(Numeric(20, 10), nullable=True)
+    lot_size = db.Column(Numeric(12, 4), nullable=False)
+    stop_loss = db.Column(Numeric(20, 10), nullable=True)
+    take_profit = db.Column(Numeric(20, 10), nullable=True)
+    status = db.Column(db.String(32), default='draft', nullable=False)
+    profit_loss = db.Column(Numeric(18, 2), default=0, nullable=False)
+    execution_mode = db.Column(db.String(20), default="paper", nullable=False)
+    idempotency_key = db.Column(db.String(64), unique=True, nullable=True)
+    opened_at = db.Column(db.DateTime(timezone=True), default=utcnow)
+    closed_at = db.Column(db.DateTime(timezone=True), nullable=True)
     signal_data = db.Column(db.JSON, default=dict)  # Store signal indicators that triggered trade
-    created_at = db.Column(db.DateTime, default=datetime.now)
-    updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
+    created_at = db.Column(db.DateTime(timezone=True), default=utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
 
 
 # Trading signals from analysis
@@ -138,25 +153,29 @@ class TradingSignal(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     currency_pair = db.Column(db.String(10), nullable=False)
     signal_type = db.Column(db.String(10), nullable=False)  # 'BUY' or 'SELL'
-    strength = db.Column(db.Float, nullable=False)  # Signal strength 0-100
-    price = db.Column(db.Float, nullable=False)
+    strength = db.Column(Numeric(5, 2), nullable=False)  # Signal strength 0-100
+    price = db.Column(Numeric(20, 10), nullable=False)
     indicators = db.Column(db.JSON, default=dict)  # RSI, MACD, MA, etc.
     timeframe = db.Column(db.String(10), nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.now)
-    expires_at = db.Column(db.DateTime, nullable=True)
+    created_at = db.Column(db.DateTime(timezone=True), default=utcnow, nullable=False)
+    expires_at = db.Column(db.DateTime(timezone=True), nullable=True)
 
 
 # License activations (bind a license to MT5 account/server/machine)
 class Activation(db.Model):
     __tablename__ = 'license_activations'
+    __table_args__ = (
+        UniqueConstraint('license_id', 'account_number', name='uq_activation_license_account'),
+        CheckConstraint("status IN ('active', 'revoked')", name='ck_activations_status'),
+    )
     id = db.Column(db.Integer, primary_key=True)
     license_id = db.Column(db.Integer, db.ForeignKey('licenses.id'), nullable=False)
     account_number = db.Column(db.String(50), nullable=False)
     server = db.Column(db.String(100), nullable=True)
     machine_fingerprint = db.Column(db.String(128), nullable=True)
     status = db.Column(db.String(20), default='active')  # 'active', 'revoked'
-    created_at = db.Column(db.DateTime, default=datetime.now)
-    last_check_at = db.Column(db.DateTime, default=datetime.now)
+    created_at = db.Column(db.DateTime(timezone=True), default=utcnow, nullable=False)
+    last_check_at = db.Column(db.DateTime(timezone=True), default=utcnow, nullable=False)
 
 
 # Notification model for user notifications
@@ -173,17 +192,51 @@ class Notification(db.Model):
     type = db.Column(db.String(50), nullable=False)  # 'trade', 'signal', 'license', 'system', 'referral'
     is_read = db.Column(db.Boolean, default=False)
     data = db.Column(db.JSON, default=dict)  # Additional data like trade_id, etc.
-    created_at = db.Column(db.DateTime, default=datetime.now)
+    created_at = db.Column(db.DateTime(timezone=True), default=utcnow, nullable=False)
 
 
 # Referral tracking for mentor commissions
 class Referral(db.Model):
     __tablename__ = 'referrals'
+    __table_args__ = (
+        UniqueConstraint('referred_user_id', name='uq_referrals_referred_user'),
+        UniqueConstraint('mentor_id', 'license_id', name='uq_referrals_mentor_license'),
+    )
     id = db.Column(db.Integer, primary_key=True)
     mentor_id = db.Column(db.String(3), nullable=False)  # The mentor's ID
     referred_user_id = db.Column(db.String, db.ForeignKey('users.id'), nullable=False)
     license_id = db.Column(db.Integer, db.ForeignKey('licenses.id'), nullable=True)
-    commission_amount = db.Column(db.Float, default=0.0)
+    commission_amount = db.Column(Numeric(18, 2), default=0, nullable=False)
     commission_paid = db.Column(db.Boolean, default=False)
-    created_at = db.Column(db.DateTime, default=datetime.now)
-    paid_at = db.Column(db.DateTime, nullable=True)
+    created_at = db.Column(db.DateTime(timezone=True), default=utcnow, nullable=False)
+    paid_at = db.Column(db.DateTime(timezone=True), nullable=True)
+
+
+class ProcessedStripeEvent(db.Model):
+    """A Stripe event ledger; its unique event id makes webhook delivery idempotent."""
+
+    __tablename__ = "processed_stripe_events"
+    id = db.Column(db.Integer, primary_key=True)
+    stripe_event_id = db.Column(db.String(255), unique=True, nullable=False)
+    event_type = db.Column(db.String(100), nullable=False)
+    status = db.Column(db.String(32), nullable=False, default="received")
+    payload = db.Column(db.JSON, nullable=False, default=dict)
+    processed_at = db.Column(db.DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class AuditEvent(db.Model):
+    """Append-only record of sensitive security and financial actions."""
+
+    __tablename__ = "audit_events"
+    __table_args__ = (
+        db.Index("idx_audit_events_actor_created", "actor_id", "created_at"),
+        db.Index("idx_audit_events_target", "target_type", "target_id"),
+    )
+    id = db.Column(db.Integer, primary_key=True)
+    action = db.Column(db.String(100), nullable=False)
+    actor_id = db.Column(db.String, db.ForeignKey("users.id"), nullable=True)
+    target_type = db.Column(db.String(64), nullable=True)
+    target_id = db.Column(db.String(255), nullable=True)
+    request_id = db.Column(db.String(64), nullable=True)
+    metadata = db.Column(db.JSON, nullable=False, default=dict)
+    created_at = db.Column(db.DateTime(timezone=True), default=utcnow, nullable=False)

@@ -8,10 +8,9 @@ import argparse
 import os
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-
-from app import app, db
-from models import User
+from .app import app
+from .extensions import db
+from .models import User
 
 
 def set_password(email, password):

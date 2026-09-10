@@ -58,7 +58,7 @@
         </div>
     </div>
     {% else %}
-    <a href="{{ url_for('mobile_quotes') }}" class="action-card">
+    <a href="{{ url_for('mobile.quotes') }}" class="action-card">
         <div class="icon"><i class="fas fa-play-circle"></i></div>
         <div class="content">
             <h3>Enable Trading</h3>
@@ -68,7 +68,7 @@
     {% endif %}
     
     <!-- Quick Actions -->
-    <a href="{{ url_for('analyze_markets') }}" class="action-card">
+    <a href="{{ url_for('trading.analyze_markets') }}" class="action-card">
         <div class="icon"><i class="fas fa-search-dollar"></i></div>
         <div class="content">
             <h3>ANALYZE MARKETS</h3>
@@ -81,7 +81,7 @@
     <div class="status-text">NO EA CONNECTED</div>
     <div class="status-subtext">ADD A LICENSE KEY TO GET STARTED</div>
     
-    <a href="{{ url_for('buy_license') }}" class="action-card">
+    <a href="{{ url_for('auth.buy_license') }}" class="action-card">
         <div class="icon">+</div>
         <div class="content">
             <h3>ADD A NEW EA</h3>
@@ -122,7 +122,8 @@
                 </div>
             </div>
         </div>
-        <form method="POST" action="{{ url_for('close_trade', trade_id=trade.id) }}" style="margin-top: 15px;">
+        <form method="POST" action="{{ url_for('trading.close_trade', trade_id=trade.id) }}" style="margin-top: 15px;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn-primary" style="width: 100%; margin: 0; background: rgba(244, 67, 54, 0.3);">
                 <i class="fas fa-times"></i> CLOSE TRADE
             </button>

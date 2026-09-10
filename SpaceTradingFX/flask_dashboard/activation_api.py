@@ -1,19 +1,22 @@
 from flask import Blueprint, request, jsonify
 from flask_login import login_required, current_user
-from app import app, db
-from models import License
-from license_manager import record_activation, license_status, check_license_valid
+from .extensions import db
+from .models import License
+from .license_manager import record_activation, license_status, check_license_valid
+from .audit import record_audit_event
+from .extensions import limiter
 
 bp = Blueprint('activation_api', __name__, url_prefix='/api/license')
 
 @bp.route('/activate', methods=['POST'])
 @login_required
+@limiter.limit("10 per hour")
 def activate_license():
     data = request.get_json() or {}
-    license_key = data.get('license_key')
-    account_number = data.get('account_number')
-    server = data.get('server')
-    machine_fingerprint = data.get('machine_fingerprint')
+    license_key = str(data.get('license_key', '')).strip().upper()
+    account_number = str(data.get('account_number', '')).strip()
+    server = str(data.get('server', '')).strip()[:100] or None
+    machine_fingerprint = str(data.get('machine_fingerprint', '')).strip()[:128] or None
 
     if not license_key or not account_number:
         return jsonify({'ok': False, 'error': 'license_key and account_number required'}), 400
@@ -29,6 +32,8 @@ def activate_license():
 
     try:
         activation, created = record_activation(lic, account_number, server, machine_fingerprint)
+        record_audit_event("license.activated", actor_id=current_user.id, target_type="license", target_id=str(lic.id), metadata={"created": created})
+        db.session.commit()
         return jsonify({
             'ok': True,
             'created': created,
@@ -69,8 +74,6 @@ def revoke():
     if not (current_user.is_admin or lic.user_id == current_user.id):
         return jsonify({'ok': False, 'error': 'forbidden'}), 403
     lic.status = 'revoked'
+    record_audit_event("license.revoked", actor_id=current_user.id, target_type="license", target_id=str(lic.id))
     db.session.commit()
     return jsonify({'ok': True, 'status': 'revoked'})
-
-# Register blueprint automatically
-app.register_blueprint(bp)

@@ -11,6 +11,7 @@ werkzeug>=3.0.0
 # Security Extensions
 flask-wtf>=1.2.0
 flask-limiter>=3.5.0
+flask-migrate>=4.0.0
 flask-talisman>=1.1.0
 
 # Database
@@ -59,36 +60,3 @@ gunicorn>=21.0.0
 
 
 
-SpaceTradingFX/
-├── space_trading_fx/        # Main package folder
-│   ├── __init__.py
-│   ├── core/                # Core logic: strategies, indicators, etc.
-│   │   ├── __init__.py
-│   │   ├── strategy_engine.py
-│   │   ├── indicators.py
-│   │   └── signal_reader.py
-│   ├── trading/             # Trading logic: execution, broker API
-│   │   ├── __init__.py
-│   │   ├── broker_api.py    # e.g., IQ Option API wrapper
-│   │   ├── trade_executor.py
-│   │   └── risk_manager.py
-│   ├── gui/                 # GUI components if using PySimpleGUI or Tkinter
-│   │   ├── __init__.py
-│   │   └── dashboard.py
-│   ├── config/              # Configuration files
-│   │   ├── __init__.py
-│   │   └── settings.py
-│   ├── utils/               # Helpers: file ops, logging, etc.
-│   │   ├── __init__.py
-│   │   ├── logger.py
-│   │   └── file_utils.py
-│   └── main.py              # Entry point for starting the bot
-├── logs/                    # Logs folder
-│   └── bot.log
-├── tests/                   # Unit tests
-│   ├── __init__.py
-│   └── test_strategy_engine.py
-├── requirements.txt         # List of dependencies
-├── README.md                # Project description
-├── .gitignore               # Ignore venv, __pycache__, etc.
-└── setup.py (optional)      # If you plan to make this a pip installable package

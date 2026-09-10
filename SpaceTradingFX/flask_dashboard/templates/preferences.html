@@ -5,7 +5,8 @@
     <h2>Trading Preferences</h2>
     <p style="margin-bottom: 30px;">Configure your automated trading settings</p>
     
-    <form method="POST" action="{{ url_for('trading_preferences') }}">
+    <form method="POST" action="{{ url_for('trading.preferences') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <!-- Currency Pairs -->
         <div class="form-group">
             <label>Select Currency Pairs to Trade</label>

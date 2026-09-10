@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1>Create your account</h1>
+<p>Use a unique password with at least 12 characters.</p>
+<form method="POST" action="{{ url_for('auth.register') }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <label>Email address <input type="email" name="email" required autocomplete="email"></label>
+  <label>Password <input type="password" name="password" required minlength="12" autocomplete="new-password"></label>
+  <label>Confirm password <input type="password" name="password_confirmation" required minlength="12" autocomplete="new-password"></label>
+  <button type="submit">Create account</button>
+</form>
+<p>Already registered? <a href="{{ url_for('auth.login') }}">Sign in</a>.</p>
+{% endblock %}

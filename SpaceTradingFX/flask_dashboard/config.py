@@ -17,6 +17,7 @@ class Config:
     # Session
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = 'Lax'
+    SESSION_COOKIE_SECURE = True
     REMEMBER_COOKIE_SAMESITE = 'Lax'
     REMEMBER_COOKIE_DURATION = timedelta(days=14)
     
@@ -43,7 +44,11 @@ class Config:
         'ENABLE_GPT5_FOR_ALL_CLIENTS', 'true'
     ).lower() in ('1', 'true', 'yes')
     
-    # Stripe
+    # Trading safety.  These values are deliberately not environment toggles:
+    # changing an environment variable must never turn on broker execution.
+    PAPER_TRADING_ONLY = True
+    LIVE_TRADING_ENABLED = False
+    MT5_ORDER_EXECUTION_ENABLED = False
     STRIPE_SECRET_KEY = os.environ.get('STRIPE_SECRET_KEY', '')
     STRIPE_PUBLISHABLE_KEY = os.environ.get('STRIPE_PUBLISHABLE_KEY', '')
     STRIPE_WEBHOOK_SECRET = os.environ.get('STRIPE_WEBHOOK_SECRET', '')
@@ -60,9 +65,6 @@ class Config:
     MT5_PASSWORD = os.environ.get('MT5_PASSWORD', '')
     MT5_SERVER = os.environ.get('MT5_SERVER', '')
     
-    # Admin defaults
-    DEFAULT_ADMIN_EMAIL = os.environ.get('DEFAULT_ADMIN_EMAIL', 'molotojafta30@gmail.com')
-    DEFAULT_ADMIN_ID = os.environ.get('DEFAULT_ADMIN_ID', 'jafta-moloto')
     
     @staticmethod
     def validate():
@@ -119,7 +121,13 @@ class ProductionConfig(Config):
             errors.append('SESSION_SECRET environment variable is required in production')
         
         if not os.environ.get('DATABASE_URL'):
-            errors.append('DATABASE_URL environment variable is recommended in production')
+            errors.append('DATABASE_URL environment variable is required in production')
+
+        if os.environ.get('STRIPE_SECRET_KEY') and not os.environ.get('STRIPE_WEBHOOK_SECRET'):
+            errors.append('STRIPE_WEBHOOK_SECRET is required when Stripe payments are enabled')
+
+        if not os.environ.get('LICENSE_PUBLIC_KEY_PEM') or not os.environ.get('LICENSE_PRIVATE_KEY_PEM'):
+            errors.append('LICENSE_PUBLIC_KEY_PEM and LICENSE_PRIVATE_KEY_PEM are required in production')
         
         return errors
 
@@ -137,6 +145,7 @@ class TestingConfig(Config):
     
     # Disable rate limiting in tests
     RATELIMIT_ENABLED = False
+    SESSION_COOKIE_SECURE = False
     
     # Use a fixed secret key
     SECRET_KEY = 'test-secret-key-for-testing-only'

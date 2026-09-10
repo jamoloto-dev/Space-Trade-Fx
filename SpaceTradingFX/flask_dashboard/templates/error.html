@@ -7,6 +7,6 @@
     <p style="font-size: 1.2em; color: #666; margin-bottom: 30px;">
         {{ error if error else "An unexpected error occurred" }}
     </p>
-    <a href="{{ url_for('index') }}" class="btn">Go to Homepage</a>
+    <a href="{{ url_for('auth.index') }}" class="btn">Go to Homepage</a>
 </div>
 {% endblock %}
