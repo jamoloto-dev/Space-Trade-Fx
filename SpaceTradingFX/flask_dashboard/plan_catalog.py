@@ -31,7 +31,13 @@ class Plan:
 PLANS: dict[str, Plan] = {
     "basic": Plan("basic", Decimal("29.99"), 30, 3, ("basic_signals", "paper_trading")),
     "premium": Plan("premium", Decimal("99.99"), 30, 10, ("advanced_signals", "paper_trading", "email_alerts")),
-    "professional": Plan("professional", Decimal("199.99"), 30, 50, ("advanced_signals", "paper_trading", "email_alerts", "priority_support", "custom_strategies")),
+    "professional": Plan(
+        "professional",
+        Decimal("199.99"),
+        30,
+        50,
+        ("advanced_signals", "paper_trading", "email_alerts", "priority_support", "custom_strategies"),
+    ),
 }
 
 

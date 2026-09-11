@@ -1,15 +1,17 @@
-import rsa
-import secrets
-import json
-import base64
-import os
 import logging
+import os
+import secrets
 from datetime import datetime, timedelta, timezone
 
-from .extensions import db
-from .models import License, Activation
+import rsa
+from sqlalchemy.exc import IntegrityError
+
 from .audit import record_audit_event
+from .extensions import db
+from .models import Activation, License
 from .plan_catalog import PLANS, get_plan
+
+logger = logging.getLogger(__name__)
 
 
 # Generate RSA keys (run once and store securely)
@@ -25,15 +27,15 @@ def _load_keys_from_env():
     priv_pem = os.environ.get("LICENSE_PRIVATE_KEY_PEM")
     if pub_pem and priv_pem:
         try:
-            return (
-                rsa.PublicKey.load_pkcs1(pub_pem.encode()),
-                rsa.PrivateKey.load_pkcs1(priv_pem.encode())
-            )
+            return (rsa.PublicKey.load_pkcs1(pub_pem.encode()), rsa.PrivateKey.load_pkcs1(priv_pem.encode()))
         except Exception:
             pass
     # Fallback: generate ephemeral keys (log warning)
-    logging.getLogger(__name__).warning("Using generated ephemeral RSA keys for licensing; set LICENSE_PUBLIC_KEY_PEM & LICENSE_PRIVATE_KEY_PEM for persistence.")
+    logging.getLogger(__name__).warning(
+        "Using generated ephemeral RSA keys for licensing; set LICENSE_PUBLIC_KEY_PEM & LICENSE_PRIVATE_KEY_PEM for persistence."
+    )
     return generate_keys()
+
 
 PUBLIC_KEY, PRIVATE_KEY = _load_keys_from_env()
 
@@ -61,32 +63,34 @@ def _as_utc(value: datetime) -> datetime:
     return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
 
 
-def generate_license_key(user_id, license_type='basic'):
+def generate_license_key(user_id, license_type="basic"):
     """Generate a simple 13-character license key"""
-    
+
     plan = get_plan(license_type)
-    
+
     # Generate a simple 13-character alphanumeric key (e.g., STFX-XXXX-XXXX)
     import string
+
     chars = string.ascii_uppercase + string.digits
-    part1 = ''.join(secrets.choice(chars) for _ in range(4))
-    part2 = ''.join(secrets.choice(chars) for _ in range(4))
-    part3 = ''.join(secrets.choice(chars) for _ in range(4))
+    part1 = "".join(secrets.choice(chars) for _ in range(4))
+    part2 = "".join(secrets.choice(chars) for _ in range(4))
+    part3 = "".join(secrets.choice(chars) for _ in range(4))
     license_key = f"{part1}-{part2}-{part3}"  # Format: XXXX-XXXX-XXXX (14 chars with dashes, 12 without)
-    
+
     # Ensure uniqueness in database
     from .models import License as LicenseModel
+
     while LicenseModel.query.filter_by(license_key=license_key).first():
-        part1 = ''.join(secrets.choice(chars) for _ in range(4))
-        part2 = ''.join(secrets.choice(chars) for _ in range(4))
-        part3 = ''.join(secrets.choice(chars) for _ in range(4))
+        part1 = "".join(secrets.choice(chars) for _ in range(4))
+        part2 = "".join(secrets.choice(chars) for _ in range(4))
+        part3 = "".join(secrets.choice(chars) for _ in range(4))
         license_key = f"{part1}-{part2}-{part3}"
-    
+
     # Calculate expiry date
     duration = plan.duration_days
     issued_at = utcnow()
     expires_at = issued_at + timedelta(days=duration)
-    
+
     # Create license data (stored in database, not in key)
     license_data = {
         "id": license_key,
@@ -95,9 +99,9 @@ def generate_license_key(user_id, license_type='basic'):
         "issued": issued_at.isoformat(),
         "expires": expires_at.isoformat(),
         "features": list(plan.features),
-        "max_trades": plan.max_active_trades
+        "max_trades": plan.max_active_trades,
     }
-    
+
     return license_key, license_data
 
 
@@ -105,20 +109,20 @@ def validate_license_key(license_key):
     """Validate a license key by checking the database"""
     try:
         from .models import License as LicenseModel
-        
+
         # Look up license in database
         license_record = LicenseModel.query.filter_by(license_key=license_key).first()
-        
+
         if not license_record:
             return False, "License key not found"
-        
-        if license_record.status != 'active':
+
+        if license_record.status != "active":
             return False, f"License is {license_record.status}"
-        
+
         # Check expiry
         if license_record.expires_at and utcnow() > _as_utc(license_record.expires_at):
             return False, "License expired"
-        
+
         # Build license data from database record
         license_data = {
             "id": license_record.license_key,
@@ -127,13 +131,14 @@ def validate_license_key(license_key):
             "issued": license_record.issued_at.isoformat() if license_record.issued_at else None,
             "expires": license_record.expires_at.isoformat() if license_record.expires_at else None,
             "features": license_record.features or [],
-            "max_trades": license_record.max_active_trades
+            "max_trades": license_record.max_active_trades,
         }
-        
+
         return True, license_data
-    
-    except Exception as e:
-        return False, f"License validation error: {str(e)}"
+
+    except Exception:
+        logger.exception("License validation error")
+        return False, "License validation failed"
 
 
 def provision_license(
@@ -200,7 +205,6 @@ def record_activation(license_obj: License, account_number: str, server: str | N
     if existing:
         # Update last check
         existing.last_check_at = utcnow()
-        db.session.commit()
         return existing, False
     count = Activation.query.filter_by(license_id=license_obj.id).count()
     if count >= MAX_ACTIVATIONS:
@@ -210,10 +214,21 @@ def record_activation(license_obj: License, account_number: str, server: str | N
         account_number=account_number,
         server=server,
         machine_fingerprint=machine_fingerprint,
-        status='active'
+        status="active",
     )
-    db.session.add(act)
-    db.session.commit()
+    try:
+        # The database uniqueness constraint is the concurrency authority.
+        # A savepoint lets a duplicate concurrent request become idempotent
+        # without discarding the enclosing request/audit transaction.
+        with db.session.begin_nested():
+            db.session.add(act)
+            db.session.flush()
+    except IntegrityError:
+        existing = Activation.query.filter_by(license_id=license_obj.id, account_number=account_number).first()
+        if existing is not None:
+            existing.last_check_at = utcnow()
+            return existing, False
+        raise
     return act, True
 
 
@@ -238,8 +253,9 @@ def license_status(license_key: str):
                 "machine_fingerprint": a.machine_fingerprint,
                 "created_at": a.created_at.isoformat(),
                 "last_check_at": a.last_check_at.isoformat(),
-                "status": a.status
-            } for a in acts
+                "status": a.status,
+            }
+            for a in acts
         ],
         "activation_limit": MAX_ACTIVATIONS,
     }
@@ -247,19 +263,14 @@ def license_status(license_key: str):
 
 def get_active_license(user_id):
     """Get the active license for a user"""
-    license = License.query.filter_by(
-        user_id=user_id,
-        status='active'
-    ).filter(
-        License.expires_at > utcnow().replace(tzinfo=None)
-    ).first()
-    
+    license = License.query.filter_by(user_id=user_id, status="active").order_by(License.expires_at.desc()).first()
+
     # Update expired licenses
-    if license and license.expires_at and _as_utc(license.expires_at) < utcnow():
-        license.status = 'expired'
+    if license and license.expires_at and _as_utc(license.expires_at) <= utcnow():
+        license.status = "expired"
         db.session.commit()
         return None
-    
+
     return license
 
 
@@ -268,35 +279,36 @@ def check_license_valid(user_id):
     license = get_active_license(user_id)
     if not license:
         return False, "No active license found"
-    
+
     # Validate the license key
     is_valid, result = validate_license_key(license.license_key)
-    
+
     if not is_valid:
-        license.status = 'revoked'
+        license.status = "revoked"
         db.session.commit()
         return False, result
-    
+
     return True, license
 
 
 def require_license(f):
     """Decorator to require a valid license for a route"""
     from functools import wraps
+
     from flask import flash, redirect, url_for
     from flask_login import current_user
-    
+
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if not current_user.is_authenticated:
-            flash('Please log in to access this feature', 'warning')
-            return redirect(url_for('auth.login'))
-        
+            flash("Please log in to access this feature", "warning")
+            return redirect(url_for("auth.login"))
+
         is_valid, result = check_license_valid(current_user.id)
         if not is_valid:
-            flash(f'Valid license required: {result}', 'error')
-            return redirect(url_for('auth.buy_license'))
-        
+            flash(f"Valid license required: {result}", "error")
+            return redirect(url_for("auth.buy_license"))
+
         return f(*args, **kwargs)
-    
+
     return decorated_function

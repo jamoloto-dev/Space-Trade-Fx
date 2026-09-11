@@ -9,11 +9,11 @@ Usage:
 """
 
 import os
-import sys
-
 def main():
     """Run the SpaceTradingFX Flask application"""
-    from SpaceTradingFX.flask_dashboard.app import app
+    from flask_dashboard import create_app
+
+    app = create_app()
 
     
     # Configuration
@@ -36,14 +36,4 @@ def main():
 
 
 if __name__ == '__main__':
-    # Check for command line arguments
-    if '--production' in sys.argv or '--prod' in sys.argv:
-        os.environ['FLASK_DEBUG'] = 'False'
-        try:
-            import gunicorn  # type: ignore  # noqa: F401
-            # If gunicorn is available, suggest using it
-            print("For production, use: gunicorn -w 4 -b 0.0.0.0:5000 'SpaceTradingFX.flask_dashboard.app:app'")
-        except ImportError:
-            pass
-    
     main()

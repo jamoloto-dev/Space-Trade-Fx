@@ -1,260 +1,47 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}SpaceTradingFX{% endblock %}</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            color: #333;
-        }
-        
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 20px;
-        }
-        
-        .header {
-            background: rgba(255, 255, 255, 0.95);
-            padding: 20px;
-            border-radius: 10px;
-            margin-bottom: 20px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        
-        .header h1 {
-            color: #667eea;
-            font-size: 2em;
-        }
-        
-        .nav {
-            display: flex;
-            gap: 15px;
-        }
-        
-        .nav a, .btn {
-            padding: 10px 20px;
-            background: #667eea;
-            color: white;
-            text-decoration: none;
-            border-radius: 5px;
-            transition: all 0.3s;
-            border: none;
-            cursor: pointer;
-            font-size: 14px;
-        }
-        
-        .nav a:hover, .btn:hover {
-            background: #764ba2;
-            transform: translateY(-2px);
-        }
-        
-        .btn-success {
-            background: #10b981;
-        }
-        
-        .btn-success:hover {
-            background: #059669;
-        }
-        
-        .btn-danger {
-            background: #ef4444;
-        }
-        
-        .btn-danger:hover {
-            background: #dc2626;
-        }
-        
-        .btn-warning {
-            background: #f59e0b;
-        }
-        
-        .btn-warning:hover {
-            background: #d97706;
-        }
-        
-        .card {
-            background: white;
-            border-radius: 10px;
-            padding: 25px;
-            margin-bottom: 20px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-        }
-        
-        .card h2 {
-            color: #667eea;
-            margin-bottom: 15px;
-            font-size: 1.5em;
-        }
-        
-        .alert {
-            padding: 15px;
-            border-radius: 5px;
-            margin-bottom: 20px;
-        }
-        
-        .alert-success {
-            background: #d1fae5;
-            color: #065f46;
-            border-left: 4px solid #10b981;
-        }
-        
-        .alert-error {
-            background: #fee2e2;
-            color: #991b1b;
-            border-left: 4px solid #ef4444;
-        }
-        
-        .alert-info {
-            background: #dbeafe;
-            color: #1e40af;
-            border-left: 4px solid #3b82f6;
-        }
-        
-        .alert-warning {
-            background: #fef3c7;
-            color: #92400e;
-            border-left: 4px solid #f59e0b;
-        }
-        
-        .form-group {
-            margin-bottom: 20px;
-        }
-        
-        .form-group label {
-            display: block;
-            margin-bottom: 5px;
-            font-weight: 600;
-            color: #374151;
-        }
-        
-        .form-group input, .form-group select, .form-group textarea {
-            width: 100%;
-            padding: 12px;
-            border: 2px solid #e5e7eb;
-            border-radius: 5px;
-            font-size: 14px;
-            transition: border-color 0.3s;
-        }
-        
-        .form-group input:focus, .form-group select:focus, .form-group textarea:focus {
-            outline: none;
-            border-color: #667eea;
-        }
-        
-        .grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 20px;
-        }
-        
-        .stat-card {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 20px;
-            border-radius: 10px;
-            text-align: center;
-        }
-        
-        .stat-card h3 {
-            font-size: 2.5em;
-            margin-bottom: 10px;
-        }
-        
-        .stat-card p {
-            opacity: 0.9;
-            font-size: 1.1em;
-        }
-        
-        table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-        
-        th, td {
-            padding: 12px;
-            text-align: left;
-            border-bottom: 1px solid #e5e7eb;
-        }
-        
-        th {
-            background: #f9fafb;
-            font-weight: 600;
-            color: #374151;
-        }
-        
-        tr:hover {
-            background: #f9fafb;
-        }
-        
-        .badge {
-            display: inline-block;
-            padding: 5px 12px;
-            border-radius: 20px;
-            font-size: 12px;
-            font-weight: 600;
-        }
-        
-        .badge-success {
-            background: #d1fae5;
-            color: #065f46;
-        }
-        
-        .badge-danger {
-            background: #fee2e2;
-            color: #991b1b;
-        }
-        
-        .badge-warning {
-            background: #fef3c7;
-            color: #92400e;
-        }
-        
-        .badge-info {
-            background: #dbeafe;
-            color: #1e40af;
-        }
-    </style>
-    {% block extra_css %}{% endblock %}
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}SpaceTradingFX · Paper Trading{% endblock %}</title>
+  <style>
+    :root { --ink:#152238; --muted:#607089; --surface:#fff; --canvas:#f4f7fb; --line:#d9e1ec; --brand:#315bd6; --brand-dark:#2344a5; --good:#087f5b; --good-bg:#d9f7eb; --warn:#9a5b00; --warn-bg:#fff1c7; --bad:#b42318; --bad-bg:#ffebe9; --info:#2458b8; --info-bg:#e8f0ff; --radius:14px; --shadow:0 8px 24px rgb(21 34 56 / .08); --space-1:.5rem; --space-2:.75rem; --space-3:1rem; --space-4:1.5rem; --space-5:2rem; }
+    * { box-sizing:border-box; } body { margin:0; background:var(--canvas); color:var(--ink); font:16px/1.55 Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
+    a { color:var(--brand-dark); } a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible { outline:3px solid #f6b73c; outline-offset:3px; }
+    .skip-link { position:absolute; left:var(--space-3); top:-4rem; z-index:10; background:#fff; padding:.6rem 1rem; border-radius:8px; } .skip-link:focus { top:var(--space-3); }
+    .shell { max-width:1200px; margin:auto; padding:var(--space-3); } .topbar { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:var(--space-3); padding:var(--space-3) 0; } .brand { color:var(--ink); font-weight:800; font-size:1.2rem; text-decoration:none; } .nav { display:flex; flex-wrap:wrap; gap:.25rem; } .nav a { padding:.5rem .7rem; border-radius:8px; text-decoration:none; color:var(--muted); } .nav a[aria-current="page"] { color:var(--brand-dark); background:#e8efff; font-weight:700; }
+    .environment { display:inline-flex; align-items:center; gap:.45rem; padding:.35rem .65rem; border:1px solid #8fcbb8; border-radius:999px; background:var(--good-bg); color:#075940; font-size:.8rem; font-weight:800; } .environment::before { content:""; width:.55rem; height:.55rem; background:var(--good); border-radius:50%; }
+    .card { background:var(--surface); border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow); padding:var(--space-4); margin-bottom:var(--space-3); } .card h1,.card h2,.card h3 { margin-top:0; line-height:1.2; } .eyebrow { color:var(--muted); font-size:.78rem; font-weight:800; letter-spacing:.08em; text-transform:uppercase; }
+    .alert { padding:var(--space-3); border-radius:10px; margin-bottom:var(--space-3); border-left:4px solid; } .alert-success { background:var(--good-bg); color:#075940; border-color:var(--good); } .alert-error,.alert-danger { background:var(--bad-bg); color:#8a1c13; border-color:var(--bad); } .alert-warning { background:var(--warn-bg); color:#764600; border-color:var(--warn); } .alert-info { background:var(--info-bg); color:#173d85; border-color:var(--info); }
+    .button,.btn { display:inline-flex; align-items:center; justify-content:center; gap:.4rem; padding:.65rem 1rem; border:0; border-radius:9px; background:var(--brand); color:#fff; text-decoration:none; font:inherit; font-weight:700; cursor:pointer; } .button:hover,.btn:hover { background:var(--brand-dark); } .button--danger,.btn-danger { background:var(--bad); } .button--secondary { background:#e8edf5; color:var(--ink); }
+    .grid,.metrics { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:var(--space-3); margin-bottom:var(--space-3); } .metric-card { padding:var(--space-3); background:var(--surface); border:1px solid var(--line); border-radius:12px; } .metric-card__label { margin:0; color:var(--muted); font-size:.82rem; font-weight:800; text-transform:uppercase; letter-spacing:.05em; } .metric-card__value { margin:.25rem 0; font-size:1.7rem; font-weight:800; } .metric-card__detail { margin:0; color:var(--muted); font-size:.85rem; }
+    .status-badge { display:inline-block; padding:.25rem .55rem; border-radius:999px; font-size:.78rem; font-weight:800; white-space:nowrap; } .status-badge--success { background:var(--good-bg); color:#075940; } .status-badge--warning { background:var(--warn-bg); color:#764600; } .status-badge--danger { background:var(--bad-bg); color:#8a1c13; } .status-badge--info,.status-badge--neutral { background:var(--info-bg); color:#173d85; }
+    .table-wrap { overflow-x:auto; border:1px solid var(--line); border-radius:10px; } table { width:100%; border-collapse:collapse; min-width:680px; } th,td { padding:.8rem; text-align:left; border-bottom:1px solid var(--line); } th { background:#f8faff; font-size:.78rem; letter-spacing:.04em; text-transform:uppercase; color:var(--muted); } tr:last-child td { border:0; }
+    label { display:block; font-weight:700; margin-bottom:.35rem; } input,select,textarea { width:100%; padding:.65rem; border:1px solid #b6c2d2; border-radius:8px; font:inherit; } .form-group { margin-bottom:var(--space-3); } .help { color:var(--muted); font-size:.88rem; } .empty-state { text-align:center; padding:var(--space-5) var(--space-3); color:var(--muted); } .empty-state__icon { font-size:2rem; color:var(--brand); } .empty-state h2 { color:var(--ink); }
+    .lifecycle { display:flex; gap:.25rem; flex-wrap:wrap; padding:0; list-style:none; } .lifecycle li { padding:.3rem .55rem; background:#e8edf5; border-radius:99px; font-size:.78rem; } .lifecycle .is-current { background:var(--good-bg); color:#075940; font-weight:800; } .sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
+    @media (max-width:640px) { .shell { padding:var(--space-2); } .topbar { align-items:flex-start; } .nav { width:100%; overflow:auto; flex-wrap:nowrap; } .card { padding:var(--space-3); } .button,.btn { width:100%; } }
+  </style>
+  {% block extra_css %}{% endblock %}
 </head>
 <body>
-    <div class="container">
-        {% if current_user.is_authenticated %}
-        <div class="header">
-            <h1>🚀 SpaceTradingFX</h1>
-            <div class="nav">
-                <a href="{{ url_for('trading.dashboard') }}">Dashboard</a>
-                <a href="{{ url_for('auth.view_licenses') }}">Licenses</a>
-                <a href="{{ url_for('trading.preferences') }}">Settings</a>
-                <a href="{{ url_for('auth.logout') }}">Logout</a>
-            </div>
-        </div>
-        {% endif %}
-        
-        {% with messages = get_flashed_messages(with_categories=true) %}
-            {% if messages %}
-                {% for category, message in messages %}
-                    <div class="alert alert-{{ category }}">{{ message }}</div>
-                {% endfor %}
-            {% endif %}
-        {% endwith %}
-        
-        {% block content %}{% endblock %}
-    </div>
-    
-    {% block extra_js %}{% endblock %}
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+  <div class="shell">
+    <header class="topbar">
+      <a class="brand" href="{{ url_for('auth.index') }}">SpaceTradingFX</a>
+      <span class="environment" role="status">Paper Trading — No Live Orders</span>
+      {% if current_user.is_authenticated %}<nav class="nav" aria-label="Primary navigation">
+        <a href="{{ url_for('trading.dashboard') }}" {% if request.endpoint == 'trading.dashboard' %}aria-current="page"{% endif %}>Dashboard</a>
+        <a href="{{ url_for('mobile.history') }}" {% if request.endpoint == 'mobile.history' %}aria-current="page"{% endif %}>Paper history</a>
+        <a href="{{ url_for('auth.view_licenses') }}" {% if request.endpoint == 'auth.view_licenses' %}aria-current="page"{% endif %}>Licenses</a>
+        <a href="{{ url_for('trading.preferences') }}" {% if request.endpoint == 'trading.preferences' %}aria-current="page"{% endif %}>Risk settings</a>
+        <a href="{{ url_for('auth.logout') }}">Sign out</a>
+      </nav>{% endif %}
+    </header>
+    <main id="main-content" tabindex="-1">
+      {% with messages = get_flashed_messages(with_categories=true) %}{% for category, message in messages %}<div class="alert alert-{{ category }}" role="status">{{ message }}</div>{% endfor %}{% endwith %}
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+  {% block extra_js %}{% endblock %}
 </body>
 </html>

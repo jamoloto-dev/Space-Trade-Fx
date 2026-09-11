@@ -1,0 +1,28 @@
+{% macro status_badge(label, tone='neutral') -%}
+<span class="status-badge status-badge--{{ tone }}">{{ label }}</span>
+{%- endmacro %}
+
+{% macro metric(label, value, detail='', tone='neutral') -%}
+<article class="metric-card metric-card--{{ tone }}">
+  <p class="metric-card__label">{{ label }}</p>
+  <p class="metric-card__value">{{ value }}</p>
+  {% if detail %}<p class="metric-card__detail">{{ detail }}</p>{% endif %}
+</article>
+{%- endmacro %}
+
+{% macro empty_state(title, description, action_url=None, action_label=None) -%}
+<section class="empty-state" aria-labelledby="empty-title">
+  <span class="empty-state__icon" aria-hidden="true">◌</span>
+  <h2 id="empty-title">{{ title }}</h2>
+  <p>{{ description }}</p>
+  {% if action_url and action_label %}<a class="button button--primary" href="{{ action_url }}">{{ action_label }}</a>{% endif %}
+</section>
+{%- endmacro %}
+
+{% macro lifecycle(status) -%}
+<ol class="lifecycle" aria-label="Paper trade lifecycle">
+  {% for step in ['Draft', 'Validated', 'Paper acknowledged', 'Open', 'Closed / Rejected'] %}
+  <li class="{% if step|lower in status|lower %}is-current{% endif %}">{{ step }}</li>
+  {% endfor %}
+</ol>
+{%- endmacro %}

@@ -1,132 +1,31 @@
 {% extends "mobile_base.html" %}
 
 {% block content %}
-<!-- Platform Toggle -->
-<div class="platform-toggle">
-    <button class="{% if platform == 'mt5' %}active{% endif %}" onclick="switchPlatform('mt5')">MT5 ACCOUNT</button>
-    <button class="{% if platform == 'mt4' %}active{% endif %}" onclick="switchPlatform('mt4')">MT4 ACCOUNT</button>
-</div>
-
 <!-- Connection Status -->
 <div class="connection-status">
-    {% if is_connected %}
-    <div class="status">
-        <span class="status-dot"></span>
-        MT5 CONNECTED
-    </div>
-    {% else %}
-    <div class="status" style="color: #FF9800;">
+    <div class="status status--warning">
         <span class="status-dot inactive"></span>
-        MT5 DISCONNECTED
+        PAPER TRADING ONLY — BROKER CONNECTION DISABLED
     </div>
-    {% endif %}
 </div>
 
-<!-- MT5 Logo -->
+<!-- Paper ledger icon -->
 <div class="mt-logo">
-    <div style="width: 60px; height: 60px; margin: 0 auto; background: linear-gradient(135deg, #4CAF50, #8BC34A, #FFC107, #2196F3); 
-        border-radius: 12px; display: flex; align-items: center; justify-content: center;">
-        <span style="font-size: 24px; font-weight: bold; color: white;">5</span>
+    <div class="paper-logo">
+        <span class="paper-logo__mark">P</span>
     </div>
 </div>
 
-<div class="section-title">MT5 LOGIN DETAILS</div>
+<div class="section-title">PAPER TRADING STATUS</div>
 
 <form method="POST" action="{{ url_for('mobile.metatrader') }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <input type="hidden" name="platform" value="{{ platform }}">
-    
-    <!-- Account Number -->
-    <div class="input-group">
-        <input type="text" name="account_number" class="input-field" 
-            placeholder="Account Number" 
-            value="{{ preferences.mt5_account if preferences and preferences.mt5_account else '' }}">
-    </div>
-    
-    <!-- Password -->
-    <div class="input-group">
-        <div class="input-with-icon">
-            <input type="password" name="password" id="mt_password" class="input-field" 
-                placeholder="Password (not stored on server)">
-            <span class="icon" onclick="togglePassword()">
-                <i class="fas fa-eye" id="eyeIcon"></i>
-            </span>
-        </div>
-    </div>
-    
-    <!-- Server -->
-    <div class="input-group">
-        <div class="server-select">
-            <span class="server-icon"><i class="fas fa-server"></i></span>
-            <input type="text" name="server" 
-                placeholder="Select or enter server" 
-                value="{{ preferences.mt5_server if preferences and preferences.mt5_server else '' }}">
-            <span class="clear-btn" onclick="clearServer()"><i class="fas fa-times"></i></span>
-        </div>
-    </div>
-    
-    <!-- Common Servers -->
-    <div style="margin: 10px 20px; display: flex; flex-wrap: wrap; gap: 8px;">
-        {% for server in common_servers %}
-        <button type="button" class="server-chip" 
-            onclick="selectServer('{{ server }}')"
-            style="padding: 8px 12px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); 
-                border-radius: 20px; color: #fff; font-size: 12px; cursor: pointer;">
-            {{ server }}
-        </button>
-        {% endfor %}
-    </div>
-    
     <button type="submit" class="btn-primary">
-        <i class="fas fa-link"></i>
-        LINK MT5 ACCOUNT DETAILS
+        <i class="fas fa-shield-alt"></i>
+        PAPER TRADING IS ACTIVE
     </button>
 </form>
 
-{% if preferences and preferences.mt5_account %}
-<!-- Account Info -->
-<div style="margin: 20px; padding: 20px; background: var(--card-bg); border-radius: 15px;">
-    <h3 style="margin-bottom: 15px; font-size: 14px; letter-spacing: 1px;">LINKED ACCOUNT</h3>
-    <div class="details" style="display: flex; justify-content: space-between;">
-        <div class="detail-item">
-            <div class="detail-label">ACCOUNT</div>
-            <div class="detail-value">{{ preferences.mt5_account }}</div>
-        </div>
-        <div class="detail-item">
-            <div class="detail-label">SERVER</div>
-            <div class="detail-value">{{ preferences.mt5_server or 'Not set' }}</div>
-        </div>
-        <div class="detail-item">
-            <div class="detail-label">STATUS</div>
-            <div class="detail-value" style="color: #4CAF50;">Active</div>
-        </div>
-    </div>
-</div>
-{% endif %}
-
 <script>
-function switchPlatform(platform) {
-    window.location.href = '{{ url_for("mobile.metatrader") }}?platform=' + platform;
-}
-
-function togglePassword() {
-    const input = document.getElementById('mt_password');
-    const icon = document.getElementById('eyeIcon');
-    if (input.type === 'password') {
-        input.type = 'text';
-        icon.className = 'fas fa-eye-slash';
-    } else {
-        input.type = 'password';
-        icon.className = 'fas fa-eye';
-    }
-}
-
-function clearServer() {
-    document.querySelector('input[name="server"]').value = '';
-}
-
-function selectServer(server) {
-    document.querySelector('input[name="server"]').value = server;
-}
 </script>
 {% endblock %}

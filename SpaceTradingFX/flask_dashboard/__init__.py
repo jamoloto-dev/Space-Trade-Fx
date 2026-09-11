@@ -25,7 +25,7 @@ def create_app(config_override: Mapping[str, object] | None = None) -> Flask:
     if errors and not app.config.get("TESTING"):
         raise RuntimeError("Invalid application configuration: " + "; ".join(errors))
 
-    app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)  # type: ignore[method-assign]
     app.logger.setLevel(logging.DEBUG if app.config.get("DEBUG") else logging.INFO)
     db.init_app(app)
     csrf.init_app(app)
@@ -49,8 +49,8 @@ def _register_blueprints(app: Flask) -> None:
     """Register every HTTP surface exactly once and in one visible location."""
     from .activation_api import bp as activation_bp
     from .admin import bp as admin_bp
-    from .blueprints.secure_auth import auth_bp
     from .blueprints.mobile import mobile_bp
+    from .blueprints.secure_auth import auth_bp
     from .blueprints.trading import trading_bp
     from .payments import bp as payments_bp
 

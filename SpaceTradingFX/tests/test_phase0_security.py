@@ -1,14 +1,9 @@
 from __future__ import annotations
 
-from pathlib import Path
-import sys
-
 import pytest
-
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
 from flask_dashboard import create_app
 from flask_dashboard.extensions import db
+from flask_dashboard.license_manager import create_user_license
 from flask_dashboard.models import User
 
 
@@ -74,3 +69,64 @@ def test_admin_ui_requires_administrator(app):
 
     client.post("/login", data={"email": "admin@example.com", "password": "a-secure-test-password"})
     assert client.get("/admin/ui").status_code == 200
+
+
+def test_all_mt5_http_operations_fail_closed_as_paper_only(app):
+    client = app.test_client()
+    with app.app_context():
+        user = User(id="paper-user", email="paper@example.com")
+        user.set_password("a-secure-test-password")
+        db.session.add(user)
+        db.session.commit()
+        create_user_license(user.id, "basic")
+
+    client.post("/login", data={"email": "paper@example.com", "password": "a-secure-test-password"})
+    for method, path in (
+        (client.post, "/api/mt5/connect"),
+        (client.get, "/api/mt5/positions"),
+        (client.post, "/api/mt5/trade"),
+    ):
+        response = method(path)
+        assert response.status_code == 409
+        assert response.get_json()["execution_mode"] == "paper"
+
+
+def test_quarantined_mt5_connector_cannot_connect_or_submit_orders():
+    from flask_dashboard.mt5_connector import LiveBrokerDisabledError, get_mt5_connector
+
+    connector = get_mt5_connector()
+    with pytest.raises(LiveBrokerDisabledError):
+        connector.connect()
+    with pytest.raises(LiveBrokerDisabledError):
+        connector.open_position("EURUSD", "BUY", 0.01)
+
+
+def test_notifications_test_endpoint_restricted(app):
+    client = app.test_client()
+    with app.app_context():
+        user = User(id="regular-user", email="regular@example.com")
+        user.set_password("a-secure-test-password")
+        admin = User(id="admin-user", email="admin2@example.com", is_admin=True)
+        admin.set_password("a-secure-test-password")
+        db.session.add_all([user, admin])
+        db.session.commit()
+
+    # Unauthenticated -> redirected / 401
+    assert client.post("/api/notifications/test").status_code in {302, 401}
+
+    # When not in DEBUG or TESTING (e.g. production simulation), non-admin is forbidden (403)
+    app.config["TESTING"] = False
+    app.config["DEBUG"] = False
+    try:
+        client.post("/login", data={"email": "regular@example.com", "password": "a-secure-test-password"})
+        rv_forbidden = client.post("/api/notifications/test")
+        assert rv_forbidden.status_code == 403
+        assert rv_forbidden.get_json()["error"] == "forbidden"
+
+        # Admin can call test notification
+        client.post("/login", data={"email": "admin2@example.com", "password": "a-secure-test-password"})
+        rv_admin = client.post("/api/notifications/test")
+        assert rv_admin.status_code == 200
+        assert rv_admin.get_json()["success"] is True
+    finally:
+        app.config["TESTING"] = True

@@ -219,7 +219,7 @@
             color: var(--text-secondary);
         }
         
-        /* MetaTrader Screen */
+        /* Paper-trading status screen */
         .platform-toggle {
             display: flex;
             margin: 20px;
@@ -517,6 +517,7 @@
             justify-content: center;
             padding: 0 4px;
         }
+        .notification-badge[hidden] { display: none; }
         
         /* 5-item nav adjustment */
         .bottom-nav a {
@@ -527,10 +528,38 @@
         .bottom-nav a i {
             font-size: 20px;
         }
+        .skip-link { position: absolute; left: 12px; top: -60px; z-index: 20; padding: 10px; background: #fff; color: #111; border-radius: 8px; }
+        .skip-link:focus { top: 12px; }
+        a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px solid #FFC107; outline-offset: 3px; }
+        .environment-banner { margin: 10px 20px; padding: 9px 12px; background: rgba(76,175,80,.2); border: 1px solid #4CAF50; border-radius: 10px; color: #fff; font-weight: 700; font-size: 12px; text-align: center; }
+        .symbol-toggle { margin-left: auto; display: flex; align-items: center; cursor: pointer; }
+        .symbol-toggle input { width: 20px; height: 20px; accent-color: var(--accent-green); }
+        .direction-select { background: transparent; border: 0; color: var(--accent-orange); font-size: 16px; font-weight: 600; cursor: pointer; }
+        .direction-select option { color: #111; }
+        .trading-toggle { border-color: var(--accent-orange); }
+        .trading-toggle.is-enabled { border-color: var(--accent-green); }
+        .trading-toggle__row { display:flex; align-items:center; justify-content:space-between; }
+        .trading-toggle__label { margin-top:5px; }
+        .toggle { position:relative; display:inline-block; width:60px; height:34px; }
+        .toggle input { opacity:0; width:0; height:0; }
+        .slider { position:absolute; cursor:pointer; inset:0; background:rgba(255,255,255,.2); border-radius:34px; transition:.2s; }
+        .slider::before { content:""; position:absolute; height:26px; width:26px; left:4px; bottom:4px; background:#fff; border-radius:50%; transition:.2s; }
+        .toggle input:checked + .slider { background:var(--accent-green); }
+        .toggle input:checked + .slider::before { transform:translateX(26px); }
+        .avatar--offset { margin-top:30px; } .status-text--active { color:var(--accent-green); } .license-status { margin:30px 0; }
+        .license-status__badge { display:inline-flex; align-items:center; gap:8px; background:rgba(76,175,80,.2); padding:10px 20px; border-radius:20px; color:var(--accent-green); font-weight:600; }
+        .paper-metrics { display:grid; grid-template-columns:repeat(2,1fr); gap:15px; margin:20px; text-align:center; } .paper-metrics .detail-value { font-size:24px; }
+        .value-positive { color:var(--accent-green); } .value-negative { color:#F44336; } .paper-active { background:rgba(76,175,80,.2); border:1px solid var(--accent-green); }
+        .trade-section { padding:0 20px; } .trade-section__title { margin-bottom:15px; font-size:14px; letter-spacing:1px; }
+        .trade-side { margin-left:auto; padding:5px 12px; border-radius:15px; font-size:12px; font-weight:600; } .trade-side--buy { background:rgba(76,175,80,.3); color:var(--accent-green); } .trade-side--sell { background:rgba(244,67,54,.3); color:#F44336; }
+        .close-paper-form { margin-top:15px; } .close-paper-form .btn-primary { width:100%; margin:0; background:rgba(244,67,54,.3); }
+        .inline-form { display:inline; } .status--warning { color:var(--accent-orange); } .paper-logo { width:60px; height:60px; margin:0 auto; background:linear-gradient(135deg,#4CAF50,#8BC34A,#FFC107,#2196F3); border-radius:12px; display:flex; align-items:center; justify-content:center; } .paper-logo__mark { font-size:24px; font-weight:bold; color:#fff; }
     </style>
     {% block extra_css %}{% endblock %}
 </head>
 <body>
+    <a class="skip-link" href="#mobile-main">Skip to main content</a>
+    <p class="environment-banner" role="status">PAPER TRADING — NO LIVE ORDERS</p>
     {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
             {% for category, message in messages %}
@@ -539,7 +568,7 @@
         {% endif %}
     {% endwith %}
     
-    {% block content %}{% endblock %}
+    <main id="mobile-main" tabindex="-1">{% block content %}{% endblock %}</main>
     
     <!-- Bottom Navigation -->
     <nav class="bottom-nav">
@@ -557,7 +586,7 @@
         </a>
         <a href="{{ url_for('mobile.notifications') }}" class="{% if active_page == 'notifications' %}active{% endif %} notification-link">
             <i class="fas fa-bell"></i>
-            <span class="notification-badge" id="notif-badge" style="display: none;"></span>
+            <span class="notification-badge" id="notif-badge" hidden></span>
             ALERTS
         </a>
         <a href="{{ url_for('mobile.profile') }}" class="{% if active_page == 'profile' %}active{% endif %}">
@@ -574,7 +603,7 @@
             if (data.count > 0) {
                 const badge = document.getElementById('notif-badge');
                 badge.textContent = data.count > 9 ? '9+' : data.count;
-                badge.style.display = 'block';
+                badge.hidden = false;
             }
         })
         .catch(() => {});

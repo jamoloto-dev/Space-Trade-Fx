@@ -38,23 +38,27 @@ def upgrade() -> None:
     op.create_index("idx_audit_events_target", "audit_events", ["target_type", "target_id"])
     with op.batch_alter_table("licenses") as batch:
         batch.create_unique_constraint("uq_licenses_stripe_payment_id", ["stripe_payment_id"])
-    op.add_column("trades", sa.Column("execution_mode", sa.String(length=20), nullable=False, server_default="paper"))
-    op.add_column("trades", sa.Column("idempotency_key", sa.String(length=64), nullable=True))
-    op.add_column("trades", sa.Column("broker_order_id", sa.String(length=100), nullable=True))
-    op.add_column("trades", sa.Column("broker_response", sa.JSON(), nullable=True))
-    op.add_column("trades", sa.Column("reconciliation_state", sa.String(length=32), nullable=False, server_default="not_required"))
-    op.create_unique_constraint("uq_trades_idempotency_key", "trades", ["idempotency_key"])
-    op.create_unique_constraint("uq_trades_broker_order_id", "trades", ["broker_order_id"])
+    # Batch mode supports SQLite (used by local development and migration
+    # tests), where ALTER TABLE cannot add named unique constraints.
+    with op.batch_alter_table("trades") as batch:
+        batch.add_column(sa.Column("execution_mode", sa.String(length=20), nullable=False, server_default="paper"))
+        batch.add_column(sa.Column("idempotency_key", sa.String(length=64), nullable=True))
+        batch.add_column(sa.Column("broker_order_id", sa.String(length=100), nullable=True))
+        batch.add_column(sa.Column("broker_response", sa.JSON(), nullable=True))
+        batch.add_column(sa.Column("reconciliation_state", sa.String(length=32), nullable=False, server_default="not_required"))
+        batch.create_unique_constraint("uq_trades_idempotency_key", ["idempotency_key"])
+        batch.create_unique_constraint("uq_trades_broker_order_id", ["broker_order_id"])
 
 
 def downgrade() -> None:
-    op.drop_constraint("uq_trades_broker_order_id", "trades", type_="unique")
-    op.drop_constraint("uq_trades_idempotency_key", "trades", type_="unique")
-    op.drop_column("trades", "reconciliation_state")
-    op.drop_column("trades", "broker_response")
-    op.drop_column("trades", "broker_order_id")
-    op.drop_column("trades", "idempotency_key")
-    op.drop_column("trades", "execution_mode")
+    with op.batch_alter_table("trades") as batch:
+        batch.drop_constraint("uq_trades_broker_order_id", type_="unique")
+        batch.drop_constraint("uq_trades_idempotency_key", type_="unique")
+        batch.drop_column("reconciliation_state")
+        batch.drop_column("broker_response")
+        batch.drop_column("broker_order_id")
+        batch.drop_column("idempotency_key")
+        batch.drop_column("execution_mode")
     with op.batch_alter_table("licenses") as batch:
         batch.drop_constraint("uq_licenses_stripe_payment_id", type_="unique")
     op.drop_index("idx_audit_events_target", table_name="audit_events")

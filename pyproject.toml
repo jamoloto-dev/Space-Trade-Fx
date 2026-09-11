@@ -38,15 +38,26 @@ dependencies = [
     "schedule>=1.2.0",
     
     # Payment Processing
-    "stripe>=8.0.0",
+    "stripe>=12.0.0",
     
     # Environment
     "python-dotenv>=1.0.0",
 ]
 
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["SpaceTradingFX"]
+
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0.0",
+    "pytest-cov>=4.0.0",
+    "ruff>=0.4.0",
+    "mypy>=1.10.0",
+    "pip-audit>=2.7.0",
 ]
 production = [
     "gunicorn>=21.0.0",
@@ -62,6 +73,7 @@ spacetradingfx = "SpaceTradingFX.flask_dashboard.main:main"
 
 [tool.pytest.ini_options]
 testpaths = ["SpaceTradingFX/tests"]
+pythonpath = ["SpaceTradingFX"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
@@ -69,7 +81,33 @@ python_functions = ["test_*"]
 [tool.ruff]
 line-length = 120
 target-version = "py310"
+exclude = [
+    ".git",
+    ".venv",
+    "venv",
+    "migrations",
+    "SpaceTradingFX/space_trading_fx",
+]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I"]
 ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.10"
+ignore_missing_imports = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+check_untyped_defs = false
+exclude = [
+    "migrations",
+    "SpaceTradingFX/space_trading_fx",
+    "venv",
+    ".venv",
+]
+
+[[tool.mypy.overrides]]
+module = "flask_dashboard.models"
+disable_error_code = ["name-defined"]
+
+

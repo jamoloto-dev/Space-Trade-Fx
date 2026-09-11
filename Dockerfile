@@ -40,10 +40,12 @@ ENV PATH="/opt/venv/bin:$PATH"
 
 # Copy application code
 COPY SpaceTradingFX/flask_dashboard ./flask_dashboard
-COPY SpaceTradingFX/requirements.txt .
+COPY SpaceTradingFX/requirements.txt alembic.ini docker-entrypoint.sh ./
+COPY migrations ./migrations
 
 # Create non-root user for security
-RUN useradd --create-home --shell /bin/bash appuser && \
+RUN chmod 0755 /app/docker-entrypoint.sh && \
+    useradd --create-home --shell /bin/bash appuser && \
     chown -R appuser:appuser /app
 USER appuser
 
@@ -62,13 +64,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
 # Keep package imports identical to local execution.
 WORKDIR /app
 
-# Run with gunicorn
-CMD ["gunicorn", \
-     "--bind", "0.0.0.0:8000", \
-     "--workers", "4", \
-     "--threads", "2", \
-     "--timeout", "120", \
-     "--access-logfile", "-", \
-     "--error-logfile", "-", \
-     "--capture-output", \
-     "flask_dashboard.app:app"]
+ENTRYPOINT ["/app/docker-entrypoint.sh"]

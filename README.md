@@ -1,160 +1,63 @@
-# SpaceTradingFX 🚀
+# SpaceTradingFX
 
-**Automated Forex Trading Platform with Flask Dashboard**
+## Paper Trading only
 
-[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![Flask](https://img.shields.io/badge/Flask-3.1+-green.svg)](https://flask.palletsprojects.com/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+SpaceTradingFX is a paper-trading dashboard. It records simulated orders and
+uses market data for analysis; it does not connect to brokers or submit live
+orders. MT5 HTTP routes deliberately return a feature-disabled, paper-only
+response. Do not supply broker credentials to this application.
 
-## Overview
+## Local development
 
-SpaceTradingFX is a comprehensive forex trading platform featuring:
-- 📊 Real-time market analysis with technical indicators
-- 🤖 Automated trading strategies
-- 📱 Mobile-responsive dashboard
-- 💳 Stripe payment integration for licenses
-- 🔐 Secure license management system
-- 👥 Mentor/referral system
-- 📧 Email notifications
-- 🔗 MetaTrader 5 integration (Windows)
-
-## Quick Start
-
-### 1. Clone and Setup
 ```bash
-git clone <repository-url>
-cd Space-Trade-Fx
-python -m venv venv
-venv\Scripts\activate  # Windows
-# source venv/bin/activate  # Linux/Mac
-pip install -e .
-```
-
-### 2. Configure Environment
-Create a `.env` file in the project root:
-```env
-SECRET_KEY=your-secret-key
-DATABASE_URL=sqlite:///trading.db
-
-# Stripe (Optional)
-STRIPE_SECRET_KEY=sk_test_...
-STRIPE_PUBLISHABLE_KEY=pk_test_...
-
-# Email Notifications (Optional)
-SMTP_HOST=smtp.gmail.com
-SMTP_PORT=587
-SMTP_USER=your-email@gmail.com
-SMTP_PASSWORD=your-app-password
-
-# MT5 Trading (Optional - Windows only)
-MT5_ACCOUNT=12345678
-MT5_PASSWORD=your-password
-MT5_SERVER=ICMarkets-Demo
-```
-
-### 3. Run the Application
-```bash
+python -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
+pip install -e '.[dev]'
+export FLASK_ENV=development
+alembic upgrade head
 python run.py
-```
-Visit http://127.0.0.1:5000
-
-## Project Structure
-
-```
-Space-Trade-Fx/
-├── run.py                          # Main entry point
-├── pyproject.toml                  # Project configuration
-├── SpaceTradingFX/
-│   ├── flask_dashboard/            # Flask web application
-│   │   ├── app.py                  # Flask app initialization
-│   │   ├── routes.py               # Web routes and views
-│   │   ├── models.py               # SQLAlchemy models
-│   │   ├── main.py                 # Alternative entry point
-│   │   │
-│   │   ├── # Business Logic
-│   │   ├── trading_engine.py       # Core trading logic
-│   │   ├── forex_data.py           # Market data provider
-│   │   ├── license_manager.py      # License validation
-│   │   ├── mt5_connector.py        # MetaTrader 5 integration
-│   │   ├── notifications.py        # Notification service
-│   │   ├── mentor_system.py        # Referral/commission system
-│   │   ├── payments.py             # Stripe payment flow
-│   │   │
-│   │   ├── # API & Admin
-│   │   ├── activation_api.py       # License activation API
-│   │   ├── admin.py                # Admin panel
-│   │   ├── auth.py                 # OAuth authentication
-│   │   │
-│   │   ├── api/                    # API module
-│   │   │   └── __init__.py
-│   │   ├── services/               # Services module
-│   │   │   └── __init__.py
-│   │   ├── templates/              # Jinja2 templates
-│   │   ├── instance/               # Instance-specific data
-│   │   └── logs/                   # Application logs
-│   │
-│   ├── space_trading_fx/           # Legacy trading module
-│   │   ├── core/                   # Strategy engine
-│   │   ├── trading/                # Trade execution
-│   │   ├── config/                 # Settings
-│   │   └── utils/                  # Utilities
-│   │
-│   ├── tests/                      # Test suite
-│   ├── docs/                       # Documentation
-│   └── data/                       # Signal data
-│
-└── venv/                           # Virtual environment
+pytest
 ```
 
-## Features
+The package install is required; it makes `flask_dashboard` available without
+test-time `sys.path` changes. Create an administrator only through the
+interactive command:
 
-### License System
-- Three tiers: Basic ($29.99), Premium ($99.99), Professional ($199.99)
-- Short license keys: `XXXX-XXXX-XXXX` format
-- Activation limits (3 per license by default)
-- Automatic expiration handling
-
-### Mobile Dashboard
-- Responsive design with pink/burgundy theme
-- Real-time account status
-- Trading symbol configuration
-- MetaTrader linking
-- Notification center
-- Trade history
-
-### Mentor/Referral System
-- 3-digit mentor IDs
-- 10% commission on referral purchases
-- Commission tracking and payouts
-
-## Development
-
-### Run Tests
 ```bash
-pytest SpaceTradingFX/tests/
+python -m flask_dashboard.bootstrap_admin admin@example.com
 ```
 
-### Code Style
+## Production
+
+Set `SESSION_SECRET`, `DATABASE_URL`, `LICENSE_PUBLIC_KEY_PEM`, and
+`LICENSE_PRIVATE_KEY_PEM` to real secrets. Stripe also needs
+`STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY`, and `STRIPE_WEBHOOK_SECRET`.
+The production Compose file intentionally fails fast if its required secrets
+are absent. Its entrypoint runs `alembic upgrade head` before Gunicorn starts.
+
 ```bash
-ruff check SpaceTradingFX/
-ruff format SpaceTradingFX/
+docker compose up --build
 ```
 
-## API Endpoints
+Browser checkout redirects are not proof of payment. Licenses are provisioned
+only by signature-verified Stripe webhooks, with an event ledger and unique
+payment IDs for idempotency.
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/license/activate` | POST | Activate a license |
-| `/api/license/status` | GET | Check license status |
-| `/api/account-summary` | GET | Get account summary |
-| `/api/forex-data/<pair>` | GET | Get forex data |
-| `/api/mt5/connect` | POST | Connect to MT5 |
-| `/payments/create-checkout-session` | POST | Create Stripe checkout |
+## Paper order ledger
 
-## License
+Paper orders use a validated lifecycle (`draft → validated → open → closing →
+closed`) with an immutable event record, idempotency keys, and deterministic
+internal reconciliation runs. Set `PAPER_TRADING_KILL_SWITCH=true` to reject
+new paper orders immediately. Reconciliation is intentionally against the
+local paper ledger only; it never contacts a broker.
 
-MIT License - see [LICENSE](LICENSE) for details.
+## Operational checks
 
-## Support
+- Liveness: `GET /health/live`
+- Readiness: `GET /health/ready`
+- Paper-only broker endpoints: `/api/mt5/connect`, `/api/mt5/positions`, and
+  `/api/mt5/trade` return HTTP 409.
 
-For support, email support@spacetradingfx.com or open an issue.
+Generated virtual environments, cache files, logs, and local databases are
+ignored by Git. Never commit credentials; rotate any credentials that may have
+been committed historically.

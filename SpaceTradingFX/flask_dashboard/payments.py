@@ -21,7 +21,7 @@ from .plan_catalog import PLANS, get_plan, public_plan_catalog
 try:
     import stripe as stripe_lib
 except ImportError:  # pragma: no cover - deployment dependency guard
-    stripe_lib = None
+    stripe_lib = None  # type: ignore[assignment]
 
 
 bp = Blueprint("payments", __name__, url_prefix="/payments")
@@ -33,8 +33,13 @@ def _stripe() -> Any | None:
     api_key = current_app.config.get("STRIPE_SECRET_KEY", "")
     if not api_key:
         return None
-    stripe_lib.api_key = api_key
-    return stripe_lib
+    # The legacy SDK API stores credentials in a process-global variable.
+    # A client instance keeps per-request configuration isolated instead.
+    client_type = getattr(stripe_lib, "StripeClient", None)
+    if client_type is None:
+        current_app.logger.error("Installed Stripe SDK lacks instance-client support")
+        return None
+    return client_type(api_key)
 
 
 def _requested_plan() -> str:
@@ -60,9 +65,14 @@ def _create_checkout_session(license_type: str) -> Any:
             },
             "quantity": 1,
         }
-    return stripe.checkout.Session.create(
-        payment_method_types=["card"], line_items=[line_item], mode="payment",
-        success_url=success_url, cancel_url=cancel_url, customer_email=current_user.email,
+    checkout = stripe.v1.checkout.sessions if hasattr(stripe, "v1") else stripe.checkout.sessions
+    return checkout.create(
+        payment_method_types=["card"],
+        line_items=[line_item],
+        mode="payment",
+        success_url=success_url,
+        cancel_url=cancel_url,
+        customer_email=current_user.email,
         client_reference_id=current_user.id,
         metadata={"user_id": current_user.id, "license_type": plan.code},
     )
@@ -70,7 +80,9 @@ def _create_checkout_session(license_type: str) -> Any:
 
 @bp.get("/config")
 def get_config():
-    return jsonify({"publishable_key": current_app.config.get("STRIPE_PUBLISHABLE_KEY", ""), "prices": public_plan_catalog()})
+    return jsonify(
+        {"publishable_key": current_app.config.get("STRIPE_PUBLISHABLE_KEY", ""), "prices": public_plan_catalog()}
+    )
 
 
 @bp.post("/create-checkout-session")
@@ -137,8 +149,11 @@ def webhook():
         current_app.logger.error("Rejected Stripe webhook: signature verification is not configured")
         return jsonify({"error": "Webhook verification is not configured"}), 503
     try:
-        event = stripe.Webhook.construct_event(request.get_data(), request.headers.get("Stripe-Signature", ""), signing_secret)
+        event = stripe_lib.Webhook.construct_event(
+            request.get_data(), request.headers.get("Stripe-Signature", ""), signing_secret
+        )
     except ValueError:
+        current_app.logger.warning("Rejected Stripe webhook with malformed JSON payload")
         return jsonify({"error": "Invalid payload"}), 400
     except Exception:
         current_app.logger.warning("Rejected Stripe webhook with invalid signature")
@@ -169,7 +184,9 @@ def webhook():
                 else:
                     provision_license(user_id, plan_code, stripe_payment_id=str(session["id"]), source="stripe_webhook")
                     ledger_entry.status = "processed"
-                    record_audit_event("payment.verified", actor_id=user_id, target_type="stripe_event", target_id=event_id)
+                    record_audit_event(
+                        "payment.verified", actor_id=user_id, target_type="stripe_event", target_id=event_id
+                    )
         db.session.commit()
     except IntegrityError:
         db.session.rollback()

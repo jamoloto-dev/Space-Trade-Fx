@@ -8,11 +8,11 @@ from uuid import uuid4
 from flask import Blueprint, flash, redirect, render_template, request, url_for
 from flask_login import current_user, login_required, login_user, logout_user
 
-from ..extensions import db, limiter
 from ..audit import record_audit_event
+from ..extensions import db, limiter
 from ..license_manager import check_license_valid, validate_license_key
-from ..plan_catalog import PLANS, public_plan_catalog
 from ..models import License, User
+from ..plan_catalog import PLANS, public_plan_catalog
 
 auth_bp = Blueprint("auth", __name__)
 
@@ -55,7 +55,9 @@ def register():
 @auth_bp.route("/login", methods=["GET", "POST"])
 @limiter.limit("10 per hour")
 def login():
-    if current_user.is_authenticated:
+    # A POST explicitly supplies credentials and may switch the active
+    # session (useful for shared devices and keeps stale sessions isolated).
+    if current_user.is_authenticated and request.method == "GET":
         return redirect(url_for("mobile.home"))
     if request.method == "POST":
         email = request.form.get("email", "").strip().lower()
@@ -76,7 +78,9 @@ def login():
 @auth_bp.get("/logout")
 @login_required
 def logout():
-    record_audit_event("authentication.logged_out", actor_id=current_user.id, target_type="user", target_id=current_user.id)
+    record_audit_event(
+        "authentication.logged_out", actor_id=current_user.id, target_type="user", target_id=current_user.id
+    )
     db.session.commit()
     logout_user()
     flash("You have been logged out.", "info")

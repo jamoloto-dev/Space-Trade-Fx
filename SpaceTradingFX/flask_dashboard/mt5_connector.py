@@ -8,6 +8,8 @@ closed.
 
 from __future__ import annotations
 
+MT5_AVAILABLE = False
+
 
 class LiveBrokerDisabledError(RuntimeError):
     pass
@@ -20,7 +22,7 @@ class MT5Connector:
         self.connected = False
         self.last_error = "Live MT5 integration is disabled; this product supports paper trading only."
 
-    def _disabled(self):
+    def _disabled(self, *args, **kwargs):
         raise LiveBrokerDisabledError(self.last_error)
 
     initialize = _disabled

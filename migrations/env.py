@@ -7,8 +7,8 @@ import os
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
-from SpaceTradingFX.flask_dashboard.extensions import Base
-from SpaceTradingFX.flask_dashboard import models  # noqa: F401 - register metadata
+from flask_dashboard.extensions import Base
+from flask_dashboard import models  # noqa: F401 - register metadata
 
 config = context.config
 target_metadata = Base.metadata

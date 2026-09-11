@@ -13,6 +13,8 @@ services:
       - FLASK_ENV=production
       - SESSION_SECRET=${SESSION_SECRET:?SESSION_SECRET must be set}
       - DATABASE_URL=postgresql://spacetradingfx:${DB_PASSWORD:?DB_PASSWORD must be set}@db:5432/spacetradingfx
+      - LICENSE_PUBLIC_KEY_PEM=${LICENSE_PUBLIC_KEY_PEM:?LICENSE_PUBLIC_KEY_PEM must be set}
+      - LICENSE_PRIVATE_KEY_PEM=${LICENSE_PRIVATE_KEY_PEM:?LICENSE_PRIVATE_KEY_PEM must be set}
       - REDIS_URL=redis://redis:6379/0
       - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-}
       - STRIPE_PUBLISHABLE_KEY=${STRIPE_PUBLISHABLE_KEY:-}

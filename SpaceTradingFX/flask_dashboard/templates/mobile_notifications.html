@@ -5,7 +5,7 @@
 <div class="notifications-header">
     <h2>NOTIFICATIONS</h2>
     {% if unread_count > 0 %}
-    <form method="POST" action="{{ url_for('mobile.notifications') }}" style="display: inline;">
+    <form method="POST" action="{{ url_for('mobile.notifications') }}" class="inline-form">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="action" value="mark_all_read">
         <button type="submit" class="btn-mark-all">
