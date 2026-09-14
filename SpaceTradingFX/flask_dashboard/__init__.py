@@ -77,3 +77,25 @@ def _register_health_endpoints(app: Flask) -> None:
             app.logger.exception("Readiness database check failed")
             return jsonify({"status": "not_ready"}), 503
         return jsonify({"status": "ready"})
+
+    @app.get("/health/paper-worker")
+    @limiter.exempt
+    def health_paper_worker():
+        """Report a worker lease without starting or controlling a worker."""
+        from .models import PaperWorkerLease, utcnow
+
+        lease = db.session.get(PaperWorkerLease, "paper-lifecycle")
+        expires_at = (
+            lease.expires_at.replace(tzinfo=utcnow().tzinfo)
+            if lease and lease.expires_at.tzinfo is None
+            else (lease.expires_at if lease else None)
+        )
+        if lease and expires_at > utcnow():
+            payload = {
+                "status": "degraded" if lease.last_error else "running",
+                "execution_mode": "paper",
+                "last_cycle_at": lease.last_cycle_at.isoformat() if lease.last_cycle_at else None,
+                "last_success_at": lease.last_success_at.isoformat() if lease.last_success_at else None,
+            }
+            return jsonify(payload), (503 if lease.last_error else 200)
+        return jsonify({"status": "not_running", "execution_mode": "paper"}), 503

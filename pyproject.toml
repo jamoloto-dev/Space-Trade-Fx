@@ -69,14 +69,8 @@ trading = [
 ]
 
 [project.scripts]
-spacetradingfx = "SpaceTradingFX.flask_dashboard.main:main"
-
-[tool.pytest.ini_options]
-testpaths = ["SpaceTradingFX/tests"]
-pythonpath = ["SpaceTradingFX"]
-python_files = ["test_*.py"]
-python_classes = ["Test*"]
-python_functions = ["test_*"]
+spacetradingfx = "flask_dashboard.main:main"
+spacetradingfx-paper-worker = "flask_dashboard.paper_worker:main"
 
 [tool.ruff]
 line-length = 120
@@ -109,5 +103,3 @@ exclude = [
 [[tool.mypy.overrides]]
 module = "flask_dashboard.models"
 disable_error_code = ["name-defined"]
-
-

@@ -76,6 +76,11 @@ def dashboard():
         preferences=preferences,
         recent_activity=recent_activity,
         license=license_info if is_valid else None,
+        market_data_label=(
+            "External Alpha Vantage analysis data; all orders and results remain paper simulations."
+            if current_app.config.get("MARKET_DATA_PROVIDER") in {"alphavantage", "alpha_vantage", "external"}
+            else "Deterministic synthetic simulation data; all orders and results remain paper simulations."
+        ),
     )
 
 
@@ -86,6 +91,7 @@ def preferences():
     """Trading preferences page"""
     from ..extensions import db
     from ..models import TradingPreference
+    from ..symbols import SUPPORTED_SYMBOLS, SUPPORTED_TIMEFRAMES
 
     prefs = TradingPreference.query.filter_by(user_id=current_user.id).first()
 
@@ -102,15 +108,37 @@ def preferences():
         try:
             risk_percentage = Decimal(request.form.get("risk_percentage", "1.0"))
             max_concurrent_trades = int(request.form.get("max_concurrent_trades", "3"))
+            max_lot_size = Decimal(request.form.get("max_lot_size", "1.00"))
+            max_total_lots = Decimal(request.form.get("max_total_lots", "3.00"))
+            max_daily_loss = Decimal(request.form.get("max_daily_loss", "250.00"))
+            account_equity = Decimal(request.form.get("paper_account_equity", "10000.00"))
         except (InvalidOperation, ValueError):
-            flash("Enter valid risk and trade-limit values.", "error")
+            flash("Enter valid paper risk and trade-limit values.", "error")
+            return redirect(url_for("trading.preferences"))
+        if prefs.timeframe not in SUPPORTED_TIMEFRAMES:
+            flash("Choose a supported paper timeframe.", "error")
+            return redirect(url_for("trading.preferences"))
+        if any(pair not in SUPPORTED_SYMBOLS for pair in currency_pairs):
+            flash("One or more selected symbols are unsupported in paper trading.", "error")
             return redirect(url_for("trading.preferences"))
         if not Decimal("0") < risk_percentage <= Decimal("2") or not 1 <= max_concurrent_trades <= 20:
             flash("Risk must be between 0 and 2%; trade limit must be between 1 and 20.", "error")
             return redirect(url_for("trading.preferences"))
+        if min(max_lot_size, max_total_lots, max_daily_loss, account_equity) <= 0 or max_total_lots < max_lot_size:
+            flash("Paper risk limits must be positive, and total exposure must cover one position.", "error")
+            return redirect(url_for("trading.preferences"))
         prefs.risk_percentage = risk_percentage
         prefs.max_concurrent_trades = max_concurrent_trades
         prefs.trading_enabled = request.form.get("trading_enabled") == "on"
+        settings = prefs.strategy_settings or {}
+        settings["automated_paper_trading"] = request.form.get("automated_paper_trading") == "on"
+        settings["risk_controls"] = {
+            "max_lot_size": str(max_lot_size),
+            "max_total_lots": str(max_total_lots),
+            "max_daily_loss": str(max_daily_loss),
+            "account_equity": str(account_equity),
+        }
+        prefs.strategy_settings = settings
 
         direction_prefs = {}
         for p in currency_pairs:
@@ -124,9 +152,14 @@ def preferences():
         flash("Trading preferences updated!", "success")
         return redirect(url_for("trading.dashboard"))
 
-    available_pairs = ["EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCAD", "USDCHF", "NZDUSD"]
+    available_pairs = sorted(SUPPORTED_SYMBOLS)
 
-    return render_template("preferences.html", preferences=prefs, available_pairs=available_pairs)
+    return render_template(
+        "preferences.html",
+        preferences=prefs,
+        available_pairs=available_pairs,
+        unsupported_timeframe=prefs.timeframe not in SUPPORTED_TIMEFRAMES,
+    )
 
 
 @trading_bp.route("/analyze-markets")

@@ -13,13 +13,13 @@
   {{ metric('Paper trades', account_summary.total_trades, 'Simulation ledger') }}
   {{ metric('Open positions', account_summary.active_trades, 'Paper positions only', 'info') }}
   {{ metric('Win rate', '%.1f%%'|format(account_summary.win_rate), 'Closed paper trades') }}
-  {{ metric('Paper P/L', '$%.2f'|format(account_summary.total_profit), 'Not a cash balance', 'success' if account_summary.total_profit >= 0 else 'danger') }}
+  {{ metric('Paper P/L', 'SIM %.2f'|format(account_summary.total_profit), 'USD-assumed simulated units; not a cash balance', 'success' if account_summary.total_profit >= 0 else 'danger') }}
 </section>
 
 <section class="card" aria-labelledby="controls-title">
   <p class="eyebrow">Step 1</p><h2 id="controls-title">Prepare your simulation</h2>
-  <p class="help">Market analysis uses the configured simulation data source. Treat every result as educational, not investment advice.</p>
-  <p><a class="button" href="{{ url_for('trading.analyze_markets') }}">Analyze simulated markets</a> <a class="button button--secondary" href="{{ url_for('trading.preferences') }}">Review risk settings</a></p>
+  <p class="help">{{ market_data_label }} Treat every result as educational, not investment advice.</p>
+  <p><a class="button" href="{{ url_for('trading.analyze_markets') }}">Analyze configured paper data</a> <a class="button button--secondary" href="{{ url_for('trading.preferences') }}">Review risk settings</a></p>
 </section>
 
 <section class="card" aria-labelledby="trades-title">
@@ -33,7 +33,7 @@
       <td><strong>{{ trade.currency_pair }}</strong><br><span class="help">Simulation</span></td>
       <td>{{ status_badge(trade.trade_type, 'success' if trade.trade_type == 'BUY' else 'danger') }}</td>
       <td>{{ '%.5f'|format(trade.entry_price) }}</td><td>{{ trade.lot_size }}</td>
-      <td>{{ '$%.2f'|format(trade.profit_loss) }}</td><td>{{ trade.opened_at.strftime('%d %b, %H:%M') }}</td>
+      <td>{{ 'SIM %.2f'|format(trade.profit_loss) }}</td><td>{{ trade.opened_at.strftime('%d %b, %H:%M') }}</td>
       <td><form method="post" action="{{ url_for('trading.close_trade', trade_id=trade.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="button button--danger" type="submit">Close paper trade</button></form></td>
     </tr>{% endfor %}</tbody>
   </table></div>
@@ -53,8 +53,8 @@
 
 <section class="card" aria-labelledby="signals-title">
   <p class="eyebrow">Market data</p><h2 id="signals-title">Recent simulated signals</h2>
-  <p class="help">Source mode: simulation. Freshness is shown from each generated signal timestamp; unavailable data is never substituted as a live quote.</p>
-  {% if recent_signals %}<div class="table-wrap"><table><thead><tr><th>Symbol</th><th>Signal</th><th>Strength</th><th>Price</th><th>Timeframe</th><th>Generated</th></tr></thead><tbody>{% for signal in recent_signals %}<tr><td>{{ signal.currency_pair }}</td><td>{{ status_badge(signal.signal_type, 'success' if signal.signal_type == 'BUY' else 'danger' if signal.signal_type == 'SELL' else 'neutral') }}</td><td>{{ '%.0f%%'|format(signal.strength) }}</td><td>{{ '%.5f'|format(signal.price) }}</td><td>{{ signal.timeframe }}</td><td>{{ signal.created_at.strftime('%d %b, %H:%M') }}</td></tr>{% endfor %}</tbody></table></div>{% else %}{{ empty_state('No simulated signals yet', 'Analyze the configured paper market to generate a transparent simulation signal.', url_for('trading.analyze_markets'), 'Analyze simulated markets') }}{% endif %}
+  <p class="help">{{ market_data_label }} Unavailable data is never substituted as a quote.</p>
+  {% if recent_signals %}<div class="table-wrap"><table><thead><tr><th>Symbol</th><th>Signal</th><th>Strength</th><th>Price</th><th>Timeframe</th><th>Generated</th></tr></thead><tbody>{% for signal in recent_signals %}<tr><td>{{ signal.currency_pair }}</td><td>{{ status_badge(signal.signal_type, 'success' if signal.signal_type == 'BUY' else 'danger' if signal.signal_type == 'SELL' else 'neutral') }}</td><td>{{ '%.0f%%'|format(signal.strength) }}</td><td>{{ '%.5f'|format(signal.price) }}</td><td>{{ signal.timeframe }}</td><td>{{ signal.created_at.strftime('%d %b, %H:%M') }}</td></tr>{% endfor %}</tbody></table></div>{% else %}{{ empty_state('No paper signals yet', 'Analyze the configured paper market to generate a transparent signal.', url_for('trading.analyze_markets'), 'Analyze configured paper data') }}{% endif %}
 </section>
 
 <section class="card" aria-labelledby="activity-title">

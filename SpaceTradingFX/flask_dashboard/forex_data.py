@@ -6,10 +6,17 @@ from typing import Any
 import requests
 
 logger = logging.getLogger(__name__)
+SOURCE_INTERVALS = {"1min", "5min", "15min", "30min", "60min"}
+PAPER_TIMEFRAME_INTERVALS = {"1M": "1min", "5M": "5min", "15M": "15min", "1H": "60min"}
 
 
 def _parse_timestamp(ts_str: str) -> datetime | None:
     """Safely parse provider timestamp strings to UTC datetime."""
+    try:
+        parsed = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+        return parsed.replace(tzinfo=timezone.utc) if parsed.tzinfo is None else parsed.astimezone(timezone.utc)
+    except ValueError:
+        pass
     for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M:%SZ"):
         try:
             dt = datetime.strptime(ts_str, fmt)
@@ -19,6 +26,11 @@ def _parse_timestamp(ts_str: str) -> datetime | None:
         except ValueError:
             continue
     return None
+
+
+def parse_market_timestamp(value: object) -> datetime | None:
+    """Parse a provider candle timestamp without accepting a missing value."""
+    return _parse_timestamp(value) if isinstance(value, str) and value else None
 
 
 class ForexDataProvider:
@@ -58,9 +70,9 @@ class ForexDataProvider:
         """Return True if timestamp is within max_staleness_seconds, False if stale."""
         dt = _parse_timestamp(latest_timestamp_str)
         if dt is None:
-            return True
+            return False
         age = (datetime.now(timezone.utc) - dt).total_seconds()
-        return age <= self.max_staleness_seconds
+        return 0 <= age <= self.max_staleness_seconds
 
     def get_forex_intraday(
         self, from_currency: str = "EUR", to_currency: str = "USD", interval: str = "5min"
@@ -71,16 +83,9 @@ class ForexDataProvider:
         if cached is not None:
             return cached
 
-        interval_map = {
-            "1M": "1min",
-            "5M": "5min",
-            "15M": "15min",
-            "30M": "30min",
-            "1H": "60min",
-            "4H": "60min",
-            "D": "60min",
-        }
-        api_interval = interval_map.get(interval, interval if "min" in interval else "5min")
+        api_interval = PAPER_TIMEFRAME_INTERVALS.get(interval, interval)
+        if api_interval not in SOURCE_INTERVALS:
+            return {"success": False, "error": f"Unsupported source timeframe: {interval}"}
 
         try:
             params = {
@@ -111,25 +116,35 @@ class ForexDataProvider:
 
             if time_series_key and data[time_series_key]:
                 time_series = data[time_series_key]
-                latest_ts = next(iter(time_series.keys()))
+                parsed_rows: list[tuple[str, datetime, Any]] = []
+                for timestamp, values in time_series.items():
+                    parsed = _parse_timestamp(timestamp)
+                    if parsed is None:
+                        return {"success": False, "error": "Market data has an invalid timestamp"}
+                    parsed_rows.append((timestamp, parsed, values))
+                parsed_rows.sort(key=lambda row: row[1], reverse=True)
+                latest_ts = parsed_rows[0][0]
 
                 if not self._check_staleness(latest_ts):
                     logger.warning("Market data for %s%s is stale (latest: %s)", from_currency, to_currency, latest_ts)
                     return {"success": False, "error": "Market data is stale", "stale": True}
 
                 candlesticks = []
-                for timestamp, values in time_series.items():
+                for timestamp, _, values in parsed_rows:
+                    close = float(values.get("4. close", 0.0))
+                    if close <= 0:
+                        return {"success": False, "error": "Market data has an invalid close price"}
                     candlesticks.append(
                         {
                             "time": timestamp,
                             "open": float(values.get("1. open", 0.0)),
                             "high": float(values.get("2. high", 0.0)),
                             "low": float(values.get("3. low", 0.0)),
-                            "close": float(values.get("4. close", 0.0)),
+                            "close": close,
                         }
                     )
 
-                result = {"success": True, "data": candlesticks}
+                result = {"success": True, "data": candlesticks, "data_mode": "external", "provider": "alphavantage"}
                 self._set_in_cache(cache_key, result)
                 return result
             else:
@@ -233,13 +248,24 @@ class ForexDataProvider:
             logger.exception("Failed to fetch MACD data for %s%s", from_currency, to_currency)
             return {"success": False, "error": "Market data provider request failed"}
 
-    def analyze_signal(self, currency_pair: str) -> dict[str, Any]:
+    def analyze_signal(self, currency_pair: str, timeframe: str = "1H") -> dict[str, Any]:
         """Analyze multiple indicators to generate trading signal"""
         from_curr, to_curr = currency_pair[:3], currency_pair[3:]
+        interval = PAPER_TIMEFRAME_INTERVALS.get(timeframe)
+        if interval is None:
+            return {
+                "currency_pair": currency_pair,
+                "signal": "NEUTRAL",
+                "strength": 0,
+                "indicators": {},
+                "data_mode": "external",
+                "provider": "alphavantage",
+                "error": f"Unsupported source timeframe: {timeframe}",
+            }
 
         # Get indicators
-        rsi_result = self.get_rsi(from_curr, to_curr)
-        macd_result = self.get_macd(from_curr, to_curr)
+        rsi_result = self.get_rsi(from_curr, to_curr, interval=interval)
+        macd_result = self.get_macd(from_curr, to_curr, interval=interval)
 
         signal: dict[str, Any] = {
             "currency_pair": currency_pair,
@@ -247,6 +273,8 @@ class ForexDataProvider:
             "indicators": {},
             "signal": "NEUTRAL",
             "strength": 0,
+            "data_mode": "external",
+            "provider": "alphavantage",
         }
 
         if rsi_result.get("success"):
@@ -285,6 +313,8 @@ class MockForexDataProvider:
 
     def get_forex_intraday(self, from_currency="EUR", to_currency="USD", interval="5min"):
         """Return mock forex data"""
+        if PAPER_TIMEFRAME_INTERVALS.get(interval, interval) not in SOURCE_INTERVALS:
+            return {"success": False, "error": f"Unsupported source timeframe: {interval}"}
         prices = {
             "EURUSD": "1.08500",
             "GBPUSD": "1.27000",
@@ -297,20 +327,36 @@ class MockForexDataProvider:
         symbol, price = f"{from_currency}{to_currency}", prices.get(f"{from_currency}{to_currency}")
         if price is None:
             return {"success": False, "error": f"No deterministic paper price for {symbol}"}
-        timestamp = datetime.now(timezone.utc).isoformat()
+        # Fixed synthetic bar: repeated worker cycles are reproducible and
+        # cannot be mistaken for a fresh external quote.
+        timestamp = "2024-01-02T00:00:00Z"
         return {
             "success": True,
             "data": [{"time": timestamp, "open": price, "high": price, "low": price, "close": price}],
+            "data_mode": "simulation",
+            "provider": "deterministic_fixture",
         }
 
-    def analyze_signal(self, currency_pair):
+    def analyze_signal(self, currency_pair, timeframe="1H"):
         """Return an intentionally neutral deterministic development signal."""
+        if timeframe not in PAPER_TIMEFRAME_INTERVALS:
+            return {
+                "currency_pair": currency_pair,
+                "signal": "NEUTRAL",
+                "strength": 0,
+                "indicators": {},
+                "data_mode": "simulation",
+                "provider": "deterministic_fixture",
+                "error": f"Unsupported source timeframe: {timeframe}",
+            }
         return {
             "currency_pair": currency_pair,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": "2024-01-02T00:00:00Z",
             "indicators": {"rsi": 50, "macd": {"macd": 0, "signal": 0, "hist": 0}},
             "signal": "NEUTRAL",
             "strength": 0,
+            "data_mode": "simulation",
+            "provider": "deterministic_fixture",
         }
 
 

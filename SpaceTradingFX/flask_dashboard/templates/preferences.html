@@ -46,24 +46,23 @@
         
         <!-- Timeframe -->
         <div class="form-group">
-            <label for="timeframe">Trading Timeframe</label>
+            <label for="timeframe">Paper-simulation timeframe</label>
+            {% if unsupported_timeframe %}<p class="alert alert-warning">Your saved timeframe is no longer supported by the paper data source. Select a supported timeframe before enabling new orders.</p>{% endif %}
             <select id="timeframe" name="timeframe">
                 <option value="1M" {% if preferences and preferences.timeframe == '1M' %}selected{% endif %}>1 Minute</option>
                 <option value="5M" {% if preferences and preferences.timeframe == '5M' %}selected{% endif %}>5 Minutes</option>
                 <option value="15M" {% if preferences and preferences.timeframe == '15M' %}selected{% endif %}>15 Minutes</option>
                 <option value="1H" {% if preferences and preferences.timeframe == '1H' %}selected{% endif %}>1 Hour</option>
-                <option value="4H" {% if preferences and preferences.timeframe == '4H' %}selected{% endif %}>4 Hours</option>
-                <option value="D" {% if preferences and preferences.timeframe == 'D' %}selected{% endif %}>Daily</option>
             </select>
         </div>
         
         <!-- Risk Management -->
         <div class="form-group">
-            <label for="risk_percentage">Risk Per Trade (%)</label>
+            <label for="risk_percentage">Maximum stop-loss exposure per paper trade (%)</label>
             <input type="number" id="risk_percentage" name="risk_percentage" 
-                min="0.1" max="5" step="0.1" 
+                min="0.1" max="2" step="0.1"
                 value="{{ preferences.risk_percentage if preferences else 1.0 }}">
-            <small style="color: #666;">Recommended: 1-2% of account balance per trade</small>
+            <small style="color: #666;">Applied to the assumed paper equity below; this is a simulated-unit policy, not broker margin.</small>
         </div>
         
         <!-- Max Concurrent Trades -->
@@ -73,6 +72,20 @@
                 min="1" max="20" 
                 value="{{ preferences.max_concurrent_trades if preferences else 3 }}">
         </div>
+        {% set paper_risk = preferences.strategy_settings.get('risk_controls', {}) if preferences and preferences.strategy_settings else {} %}
+        <div class="form-group">
+            <label>Paper exposure limits</label>
+            <p style="color: #666;">Lots and P/L are simulation units. Daily loss resets at UTC midnight; no broker balance or FX conversion is used.</p>
+            <label for="max_lot_size">Maximum lots per position</label>
+            <input type="number" id="max_lot_size" name="max_lot_size" min="0.0001" step="0.0001" value="{{ paper_risk.get('max_lot_size', '1.00') }}">
+            <label for="max_total_lots">Maximum aggregate open lots</label>
+            <input type="number" id="max_total_lots" name="max_total_lots" min="0.0001" step="0.0001" value="{{ paper_risk.get('max_total_lots', '3.00') }}">
+            <label for="max_daily_loss">Maximum daily simulated loss</label>
+            <input type="number" id="max_daily_loss" name="max_daily_loss" min="0.01" step="0.01" value="{{ paper_risk.get('max_daily_loss', '250.00') }}">
+            <label for="paper_account_equity">Assumed paper account equity (simulated USD units)</label>
+            <input type="number" id="paper_account_equity" name="paper_account_equity" min="1" step="0.01" value="{{ paper_risk.get('account_equity', '10000.00') }}">
+            <small style="color: #666;">Lot sizing is fixed per symbol in Quotes. This equity is used only to cap planned stop-loss exposure; FX conversion, margin, and broker balances are not modelled.</small>
+        </div>
         
         <!-- Enable Auto-Trading -->
         <div class="form-group">
@@ -81,11 +94,19 @@
                     {% if preferences and preferences.trading_enabled %}checked{% endif %}
                     style="margin-right: 15px; width: 20px; height: 20px;">
                 <div>
-                    <strong style="font-size: 1.1em;">Enable Paper Trading</strong>
+                    <strong style="font-size: 1.1em;">Allow new paper orders</strong>
                     <p style="margin-top: 5px; color: #666; font-weight: normal;">
                         Allow simulated paper orders based on signals; no broker orders are sent.
                     </p>
                 </div>
+            </label>
+        </div>
+        <div class="form-group">
+            <label style="display: flex; align-items: center; cursor: pointer; background: #f9fafb; padding: 15px; border-radius: 10px;">
+                <input type="checkbox" name="automated_paper_trading"
+                    {% if preferences and preferences.strategy_settings and preferences.strategy_settings.get('automated_paper_trading') %}checked{% endif %}
+                    style="margin-right: 15px; width: 20px; height: 20px;">
+                <div><strong>Enable deterministic automated paper signals</strong><p style="margin-top: 5px; color: #666; font-weight: normal;">Requires the separately managed paper worker. Manual paper trades remain user-directed simulations.</p></div>
             </label>
         </div>
         

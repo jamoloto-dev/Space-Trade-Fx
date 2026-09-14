@@ -1,4 +1,4 @@
-"""Browser-level End-to-End (E2E) test suite for SpaceTradingFX web interface."""
+"""Flask test-client journey coverage; this is not a real-browser E2E test."""
 
 import pytest
 from flask_dashboard import create_app
@@ -31,7 +31,7 @@ def client(app):
     return app.test_client()
 
 
-def test_browser_e2e_full_journey(client, app):
+def test_flask_test_client_full_journey(client, app):
     # 1. Landing Page Visit
     landing_res = client.get("/")
     assert landing_res.status_code == 200

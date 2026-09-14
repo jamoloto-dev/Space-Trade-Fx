@@ -51,6 +51,25 @@ internal reconciliation runs. Set `PAPER_TRADING_KILL_SWITCH=true` to reject
 new paper orders immediately. Reconciliation is intentionally against the
 local paper ledger only; it never contacts a broker.
 
+## Automated paper workflow
+
+Automation is opt-in. Configure supported symbols and fixed lots, enable
+“Allow new paper orders” and “Enable deterministic automated paper signals”,
+then run exactly one separate worker:
+
+```bash
+spacetradingfx-paper-worker --interval 30
+```
+
+The worker holds a database lease, updates simulated P/L and SL/TP exits, and
+records local-ledger reconciliation runs. It never starts from Flask/Gunicorn.
+`/health/paper-worker` reports whether its lease is active; detailed operating
+assumptions and recovery steps are in [PAPER_TRADING_OPERATIONS.md](PAPER_TRADING_OPERATIONS.md).
+
+The simulator fills at an observed candle close and deliberately omits
+bid/ask, spreads, commissions, swaps, slippage, latency, partial fills,
+margin, and FX conversion. Its results are not trading-performance evidence.
+
 ## Operational checks
 
 - Liveness: `GET /health/live`
@@ -61,3 +80,6 @@ local paper ledger only; it never contacts a broker.
 Generated virtual environments, cache files, logs, and local databases are
 ignored by Git. Never commit credentials; rotate any credentials that may have
 been committed historically.
+
+The web-journey test suite uses Flask's test client; it is not real-browser
+end-to-end coverage.

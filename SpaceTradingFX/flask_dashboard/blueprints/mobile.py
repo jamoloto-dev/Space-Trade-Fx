@@ -3,22 +3,16 @@ Mobile Blueprint
 Handles all mobile-optimized routes (/m/*)
 """
 
+from decimal import Decimal, InvalidOperation
+
 from flask import Blueprint, current_app, flash, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
 
+from ..symbols import DEFAULT_LOT_SIZE, SUPPORTED_SYMBOLS
+
 mobile_bp = Blueprint("mobile", __name__)
 
-# Default lot sizes for symbols
-DEFAULT_LOT_SIZES = {
-    "EURUSD": 0.02,
-    "GBPUSD": 0.01,
-    "XAUUSD": 0.01,
-    "USDJPY": 0.02,
-    "AUDUSD": 0.01,
-    "USDCAD": 0.01,
-    "USDCHF": 0.01,
-    "NZDUSD": 0.01,
-}
+DEFAULT_LOT_SIZES = {symbol: DEFAULT_LOT_SIZE for symbol in SUPPORTED_SYMBOLS}
 
 
 @mobile_bp.route("/")
@@ -60,7 +54,7 @@ def quotes():
         db.session.add(preferences)
         db.session.commit()
 
-    available_pairs = ["EURUSD", "GBPUSD", "XAUUSD", "USDJPY", "AUDUSD", "USDCAD", "USDCHF", "NZDUSD"]
+    available_pairs = sorted(SUPPORTED_SYMBOLS)
 
     if request.method == "POST":
         enabled_pairs = request.form.getlist("enabled_pairs")
@@ -77,9 +71,12 @@ def quotes():
             lot_size = request.form.get(f"lot_{pair}")
             if lot_size:
                 try:
-                    lot_sizes[pair] = float(lot_size)
-                except ValueError:
-                    lot_sizes[pair] = DEFAULT_LOT_SIZES.get(pair, 0.01)
+                    parsed_lot = Decimal(lot_size)
+                    if not Decimal("0") < parsed_lot <= Decimal("1.00"):
+                        raise ValueError
+                    lot_sizes[pair] = str(parsed_lot.quantize(Decimal("0.0001")))
+                except (InvalidOperation, ValueError):
+                    lot_sizes[pair] = str(DEFAULT_LOT_SIZES.get(pair, DEFAULT_LOT_SIZE))
 
         preferences.direction_preferences = direction_prefs
 

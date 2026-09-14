@@ -43,7 +43,7 @@
         <div class="symbol-card">
             <div class="detail-label">PROFIT/LOSS</div>
             <div class="detail-value {% if account_summary.total_profit >= 0 %}value-positive{% else %}value-negative{% endif %}">
-                ${{ "%.2f"|format(account_summary.total_profit) }}
+                SIM {{ "%.2f"|format(account_summary.total_profit) }}
             </div>
         </div>
     </div>
@@ -116,7 +116,7 @@
             <div class="detail-item">
                 <div class="detail-label">P/L</div>
                 <div class="detail-value {% if trade.profit_loss >= 0 %}value-positive{% else %}value-negative{% endif %}">
-                    ${{ "%.2f"|format(trade.profit_loss) }}
+                    SIM {{ "%.2f"|format(trade.profit_loss) }}
                 </div>
             </div>
         </div>

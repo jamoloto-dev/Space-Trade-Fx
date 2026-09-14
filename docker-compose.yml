@@ -36,6 +36,31 @@ services:
       retries: 3
       start_period: 10s
 
+  # Exactly one separately managed process performs paper lifecycle work.
+  # Do not scale this service; its database lease is a second safety guard.
+  paper-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["paper-worker"]
+    environment:
+      - FLASK_ENV=production
+      - SESSION_SECRET=${SESSION_SECRET:?SESSION_SECRET must be set}
+      - DATABASE_URL=postgresql://spacetradingfx:${DB_PASSWORD:?DB_PASSWORD must be set}@db:5432/spacetradingfx
+      - LICENSE_PUBLIC_KEY_PEM=${LICENSE_PUBLIC_KEY_PEM:?LICENSE_PUBLIC_KEY_PEM must be set}
+      - LICENSE_PRIVATE_KEY_PEM=${LICENSE_PRIVATE_KEY_PEM:?LICENSE_PRIVATE_KEY_PEM must be set}
+      - REDIS_URL=redis://redis:6379/0
+      - PAPER_WORKER_INTERVAL=${PAPER_WORKER_INTERVAL:-30}
+      - PAPER_TRADING_KILL_SWITCH=${PAPER_TRADING_KILL_SWITCH:-false}
+      - MARKET_DATA_PROVIDER=${MARKET_DATA_PROVIDER:-simulation}
+      - ALPHA_VANTAGE_API_KEY=${ALPHA_VANTAGE_API_KEY:-}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    restart: unless-stopped
+
   # PostgreSQL Database
   db:
     image: postgres:15-alpine

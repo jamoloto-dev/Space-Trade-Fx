@@ -11,7 +11,12 @@ from flask_dashboard.trading_engine import PaperTradeValidationError, TradingEng
 
 class DeterministicMarketData:
     def get_forex_intraday(self, *_args):
-        return {"success": True, "data": [{"close": "1.10000"}]}
+        return {
+            "success": True,
+            "data": [{"time": "2024-01-02T00:00:00Z", "close": "1.10000"}],
+            "data_mode": "simulation",
+            "provider": "test_fixture",
+        }
 
 
 @pytest.fixture

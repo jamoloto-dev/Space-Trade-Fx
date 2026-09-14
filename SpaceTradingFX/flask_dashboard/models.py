@@ -126,6 +126,10 @@ class TradingPreference(db.Model):
 class Trade(db.Model):
     __tablename__ = "trades"
     __table_args__ = (
+        # Idempotency belongs to a caller's ledger, not the whole product.  A
+        # client retry key from one account must not reject another account's
+        # otherwise valid paper order.
+        UniqueConstraint("user_id", "idempotency_key", name="uq_trades_user_idempotency_key"),
         CheckConstraint(
             "status IN ('draft', 'validated', 'open', 'closing', 'closed', 'rejected', 'failed')",
             name="ck_trades_status",
@@ -151,7 +155,12 @@ class Trade(db.Model):
     status = db.Column(db.String(32), default="draft", nullable=False)
     profit_loss = db.Column(Numeric(18, 2), default=0, nullable=False)
     execution_mode = db.Column(db.String(20), default="paper", nullable=False)
-    idempotency_key = db.Column(db.String(64), unique=True, nullable=True)
+    idempotency_key = db.Column(db.String(64), nullable=True)
+    # Retained for migration compatibility only.  Paper-only code never sets
+    # these fields and no broker response is accepted by the application.
+    mt5_ticket = db.Column(db.String(50), nullable=True)
+    broker_order_id = db.Column(db.String(100), unique=True, nullable=True)
+    broker_response = db.Column(db.JSON, nullable=True)
     reconciliation_state = db.Column(db.String(20), default="pending", nullable=False)
     last_reconciled_at = db.Column(db.DateTime(timezone=True), nullable=True)
 
@@ -193,6 +202,19 @@ class PaperReconciliationRun(db.Model):
     checked_count = db.Column(db.Integer, nullable=False, default=0)
     exception_count = db.Column(db.Integer, nullable=False, default=0)
     created_at = db.Column(db.DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class PaperWorkerLease(db.Model):
+    """Database lease ensuring only one paper lifecycle worker is active."""
+
+    __tablename__ = "paper_worker_leases"
+    name = db.Column(db.String(64), primary_key=True)
+    owner_id = db.Column(db.String(64), nullable=False)
+    expires_at = db.Column(db.DateTime(timezone=True), nullable=False)
+    last_cycle_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    last_success_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    last_error = db.Column(db.String(250), nullable=True)
+    updated_at = db.Column(db.DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
 
 
 # Trading signals from analysis

@@ -98,3 +98,9 @@ def test_forex_data_provider_staleness_enforcement():
         assert res["success"] is False
         assert res.get("stale") is True
         assert "stale" in res.get("error", "").lower()
+
+
+def test_unsupported_timeframe_is_rejected_not_relabelled():
+    provider = ForexDataProvider(api_key="test-key")
+    assert provider.get_forex_intraday("EUR", "USD", "4H")["success"] is False
+    assert MockForexDataProvider().get_forex_intraday("EUR", "USD", "D")["success"] is False

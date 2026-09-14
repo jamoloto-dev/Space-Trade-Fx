@@ -10,7 +10,8 @@ input string LicenseKey      = "PUT-YOUR-LICENSE-KEY-HERE"; // Provided after pu
 input int    FastEMAPeriod    = 12;
 input int    SlowEMAPeriod    = 26;
 input double Lots             = 0.10;
-input bool   AllowTrading     = true;
+input bool   AllowTrading     = false; // Unsupported reference EA: default is observe-only.
+input bool   EnableUnsupportedLiveOrders = false; // Must remain false for supported product use.
 input int    RecheckHours     = 24;  // Periodic license re-check
 
 // Activation / licensing state
@@ -138,7 +139,9 @@ int GetSignal()
 //+------------------------------------------------------------------+
 bool OpenTrade(int direction)
 {
-   if(!AllowTrading || !g_LicenseOK) return false;
+   // This EA is not part of the supported application and is intentionally
+   // inert unless a developer explicitly overrides both local switches.
+   if(!EnableUnsupportedLiveOrders || !AllowTrading || !g_LicenseOK) return false;
    double price = (direction == 1) ? SymbolInfoDouble(_Symbol, SYMBOL_ASK) : SymbolInfoDouble(_Symbol, SYMBOL_BID);
    double sl=0, tp=0; // Add risk management logic
    ENUM_ORDER_TYPE type = (direction == 1) ? ORDER_TYPE_BUY : ORDER_TYPE_SELL;
