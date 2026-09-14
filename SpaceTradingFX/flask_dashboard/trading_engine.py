@@ -138,14 +138,14 @@ class TradingEngine:
             if data_mode not in {"simulation", "external"}:
                 raise MarketDataUnavailable("Market data source is not declared")
             parsed_times = [parse_market_timestamp(candle.get("time")) for candle in candles]
-            if any(timestamp is None for timestamp in parsed_times):
+            valid_times = [timestamp for timestamp in parsed_times if timestamp is not None]
+            if len(valid_times) != len(parsed_times):
                 raise MarketDataUnavailable("Market quote timestamp is missing or invalid")
-            if any(parsed_times[index] < parsed_times[index + 1] for index in range(len(parsed_times) - 1)):
+            if any(valid_times[index] < valid_times[index + 1] for index in range(len(valid_times) - 1)):
                 raise MarketDataUnavailable("Market candles are not newest-first")
             candle = candles[0]
             quote_time = str(candle.get("time", ""))
-            latest_time = parsed_times[0]
-            assert latest_time is not None  # narrowed by the validation above
+            latest_time = valid_times[0]
             if data_mode == "external":
                 max_age = int(current_app.config.get("MARKET_DATA_MAX_STALENESS", 86400))
                 age = (datetime.now(timezone.utc) - latest_time).total_seconds()
