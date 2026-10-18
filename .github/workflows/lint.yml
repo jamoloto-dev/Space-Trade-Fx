@@ -14,29 +14,21 @@ jobs:
     - uses: actions/checkout@v4
 
     - name: Set up Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: '3.12'
 
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install pylint flake8 black isort
+        pip install ruff mypy
+        pip install -e ".[dev,production]"
 
-    - name: Run flake8
-      run: |
-        # Stop the build if there are Python syntax errors or undefined names
-        flake8 SpaceTradingFX/flask_dashboard --count --select=E9,F63,F7,F82 --show-source --statistics
-        flake8 SpaceTradingFX/flask_dashboard --count --max-complexity=20 --max-line-length=120 --statistics
+    - name: Run Ruff linter
+      run: ruff check SpaceTradingFX/ --output-format=github
 
-    - name: Run pylint
-      run: |
-        pylint SpaceTradingFX/flask_dashboard --max-line-length=120 --disable=C0114,C0115,C0116,R0903,R0913 || true
+    - name: Run Ruff formatter check
+      run: ruff format --check SpaceTradingFX/
 
-    - name: Check formatting with black
-      run: |
-        black --check SpaceTradingFX/flask_dashboard --line-length=120
-
-    - name: Check import sorting with isort
-      run: |
-        isort --check-only SpaceTradingFX/flask_dashboard
+    - name: Run Mypy type checker
+      run: mypy SpaceTradingFX/flask_dashboard
