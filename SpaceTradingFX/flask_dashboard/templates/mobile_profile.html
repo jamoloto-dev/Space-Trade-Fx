@@ -54,6 +54,54 @@
     {% endif %}
 </div>
 
+<!-- Broker Connection Section -->
+<div class="section-card broker-section-card">
+    <div class="section-header" style="justify-content: space-between;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+            <i class="fas fa-network-wired" style="color: #F59E0B;"></i>
+            <span>BROKER CONNECTION</span>
+        </div>
+        {% if broker_account and broker_account.is_connected %}
+        <span class="broker-status-badge connected">
+            <span class="status-dot"></span> Connected
+        </span>
+        {% else %}
+        <span class="broker-status-badge disconnected">
+            <span class="status-dot inactive"></span> Disconnected
+        </span>
+        {% endif %}
+    </div>
+
+    {% if broker_account and broker_account.is_connected %}
+    <div class="broker-connected-info">
+        <div class="broker-detail-row">
+            <span class="broker-label">Platform</span>
+            <span class="broker-val">{{ broker_account.platform }}</span>
+        </div>
+        <div class="broker-detail-row">
+            <span class="broker-label">Server</span>
+            <span class="broker-val">{{ broker_account.server }}</span>
+        </div>
+        <div class="broker-detail-row">
+            <span class="broker-label">Account Login</span>
+            <span class="broker-val">{{ broker_account.account_login }}</span>
+        </div>
+        {% if broker_account.last_synced_at %}
+        <div class="broker-detail-row">
+            <span class="broker-label">Last Synchronized</span>
+            <span class="broker-val">{{ broker_account.last_synced_at.strftime('%d %b %Y, %H:%M UTC') }}</span>
+        </div>
+        {% endif %}
+    </div>
+    {% else %}
+    <p class="broker-desc-text">Link your MT4 / MT5 account to execute automated trading robot signals directly on your personal broker account.</p>
+    {% endif %}
+
+    <a href="{{ url_for('mobile.connect_broker') }}" class="btn-connect-account">
+        <i class="fas fa-plug"></i> Connect Your Account
+    </a>
+</div>
+
 <!-- Notification Settings -->
 <form method="POST" action="{{ url_for('mobile.profile') }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -480,6 +528,86 @@
 
 .action-item.logout i {
     color: #F44336;
+}
+
+/* Broker Connection Card Styles */
+.broker-section-card {
+    border: 1px solid rgba(245, 158, 11, 0.4);
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.25);
+}
+
+.broker-status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 3px 10px;
+    border-radius: 12px;
+}
+
+.broker-status-badge.connected {
+    background: rgba(76, 175, 80, 0.2);
+    color: #4CAF50;
+    border: 1px solid rgba(76, 175, 80, 0.4);
+}
+
+.broker-status-badge.disconnected {
+    background: rgba(255, 255, 255, 0.1);
+    color: rgba(255, 255, 255, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.broker-connected-info {
+    margin-bottom: 15px;
+}
+
+.broker-detail-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 8px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    font-size: 13px;
+}
+
+.broker-label {
+    color: rgba(255, 255, 255, 0.6);
+}
+
+.broker-val {
+    color: #FFFFFF;
+    font-weight: 600;
+}
+
+.broker-desc-text {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.7);
+    line-height: 1.5;
+    margin-bottom: 15px;
+}
+
+.btn-connect-account {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+    padding: 14px 20px;
+    background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%);
+    color: #0F172A;
+    font-weight: 800;
+    font-size: 14px;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    text-decoration: none;
+    border-radius: 9999px;
+    box-shadow: 0 4px 15px rgba(245, 158, 11, 0.4);
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.btn-connect-account:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(245, 158, 11, 0.55);
 }
 </style>
 {% endblock %}

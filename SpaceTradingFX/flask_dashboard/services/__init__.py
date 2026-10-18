@@ -44,6 +44,16 @@ from ..notifications import (
     send_email_notification,
 )
 from ..trading_engine import TradingEngine
+from .broker_bridge import (
+    BrokerConnectionError,
+    BrokerError,
+    BrokerExecutionError,
+    BrokerValidationError,
+    decrypt_broker_password,
+    encrypt_broker_password,
+    execute_robot_trade,
+    verify_and_connect,
+)
 
 __all__ = [
     # Notifications
@@ -87,4 +97,13 @@ __all__ = [
     "check_license_valid",
     "require_license",
     "LICENSE_TYPES",
+    # Broker Bridge
+    "BrokerError",
+    "BrokerConnectionError",
+    "BrokerValidationError",
+    "BrokerExecutionError",
+    "encrypt_broker_password",
+    "decrypt_broker_password",
+    "verify_and_connect",
+    "execute_robot_trade",
 ]

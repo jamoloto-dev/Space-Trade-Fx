@@ -352,6 +352,13 @@ def api_mt5_trade():
     return _paper_only_response()
 
 
+@trading_bp.route("/connect-broker", methods=["GET", "POST"])
+@login_required
+def connect_broker_redirect():
+    """Route alias directing users to the broker connection interface."""
+    return redirect(url_for("mobile.connect_broker"))
+
+
 # Error handlers for the blueprint
 @trading_bp.errorhandler(404)
 def not_found(e):

@@ -16,7 +16,15 @@ from .audit import record_audit_event
 from .extensions import db
 from .forex_data import get_forex_provider, parse_market_timestamp
 from .market_microstructure import QuoteNBBO, simulate_market_fill
-from .models import PaperOrderEvent, PaperReconciliationRun, Trade, TradingPreference, TradingSignal, utcnow
+from .models import (
+    BrokerAccount,
+    PaperOrderEvent,
+    PaperReconciliationRun,
+    Trade,
+    TradingPreference,
+    TradingSignal,
+    utcnow,
+)
 from .paper_orders import InvalidPaperOrder, PaperOrderIntent, assert_transition, validate_intent
 from .risk import PaperRiskRejected, assert_paper_intent_allowed
 from .symbols import DEFAULT_LOT_SIZE, SUPPORTED_SYMBOLS, SUPPORTED_TIMEFRAMES, instrument
@@ -216,6 +224,25 @@ class TradingEngine:
         )
         fill_report = simulate_market_fill(quote_nbbo, direction, lot_size)
 
+        # Dispatch to connected MT4/MT5 broker account if active
+        broker_acct = BrokerAccount.query.filter_by(user_id=self.user_id, is_connected=True).first()
+        broker_exec = None
+        if broker_acct:
+            from .services.broker_bridge import execute_robot_trade
+
+            try:
+                broker_exec = execute_robot_trade(
+                    user_id=self.user_id,
+                    symbol=currency_pair,
+                    order_type=direction,
+                    volume=lot_size,
+                    sl=stop_loss,
+                    tp=take_profit,
+                    current_price=entry_price,
+                )
+            except Exception as exc:
+                logger.warning("Broker execution dispatch failed for user %s: %s", self.user_id, exc)
+
         trade = Trade(
             user_id=self.user_id,
             currency_pair=currency_pair,
@@ -227,11 +254,15 @@ class TradingEngine:
             status="draft",
             execution_mode="paper",
             idempotency_key=idempotency_key or uuid4().hex,
+            mt5_ticket=str(broker_exec.get("ticket")) if (broker_exec and broker_exec.get("ticket")) else None,
+            broker_order_id=str(broker_exec.get("ticket")) if (broker_exec and broker_exec.get("ticket")) else None,
+            broker_response=broker_exec if broker_exec else None,
             signal_data={
                 **(signal_data or {}),
                 "entry_quote_time": entry_quote_time,
                 "entry_quote": entry_quote_metadata,
                 "execution_mode": "paper",
+                "broker_execution": broker_exec if broker_exec else None,
                 "simulation": True,
                 "submission_mode": submission_mode,
                 "fill_assumption": "next observed close; institutional TCA and fee attribution recorded",

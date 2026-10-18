@@ -1,0 +1,447 @@
+{% extends "mobile_base.html" %}
+
+{% block title %}Connect Broker Account — SpaceTradingFX{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* Dark & Gold Institutional Theme */
+    .broker-container {
+        padding: 15px 20px 40px;
+        max-width: 520px;
+        margin: 0 auto;
+    }
+
+    .broker-header-box {
+        text-align: center;
+        margin-bottom: 25px;
+    }
+
+    .broker-header-icon {
+        width: 64px;
+        height: 64px;
+        margin: 0 auto 15px;
+        background: linear-gradient(135deg, rgba(245, 158, 11, 0.2), rgba(217, 119, 6, 0.1));
+        border: 2px solid #F59E0B;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #F59E0B;
+        font-size: 26px;
+        box-shadow: 0 0 20px rgba(245, 158, 11, 0.25);
+    }
+
+    .broker-title {
+        font-size: 24px;
+        font-weight: 800;
+        letter-spacing: 0.5px;
+        color: #FFFFFF;
+        margin-bottom: 8px;
+    }
+
+    .broker-subtitle {
+        font-size: 13px;
+        line-height: 1.5;
+        color: #F59E0B;
+        font-weight: 600;
+        letter-spacing: 0.2px;
+        padding: 0 10px;
+    }
+
+    /* Live Connection Banner (if already connected) */
+    .live-status-card {
+        background: linear-gradient(145deg, #111827, #1f2937);
+        border: 1px solid rgba(76, 175, 80, 0.5);
+        border-radius: 16px;
+        padding: 18px;
+        margin-bottom: 25px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    }
+
+    .live-status-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 12px;
+        padding-bottom: 10px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .live-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        background: rgba(76, 175, 80, 0.2);
+        color: #4CAF50;
+        font-size: 12px;
+        font-weight: 700;
+        padding: 4px 12px;
+        border-radius: 20px;
+        border: 1px solid rgba(76, 175, 80, 0.4);
+    }
+
+    .live-badge.disconnected {
+        background: rgba(244, 67, 54, 0.2);
+        color: #F44336;
+        border-color: rgba(244, 67, 54, 0.4);
+    }
+
+    .live-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+        font-size: 12px;
+    }
+
+    .live-grid-item .lbl {
+        color: rgba(255, 255, 255, 0.6);
+        display: block;
+        margin-bottom: 2px;
+    }
+
+    .live-grid-item .val {
+        color: #FFFFFF;
+        font-weight: 600;
+        font-size: 13px;
+    }
+
+    .btn-disconnect {
+        display: block;
+        width: 100%;
+        margin-top: 14px;
+        padding: 10px;
+        background: rgba(244, 67, 54, 0.15);
+        border: 1px solid rgba(244, 67, 54, 0.4);
+        border-radius: 10px;
+        color: #EF5350;
+        font-weight: 700;
+        font-size: 12px;
+        cursor: pointer;
+        text-align: center;
+        transition: all 0.2s ease;
+    }
+
+    .btn-disconnect:hover {
+        background: rgba(244, 67, 54, 0.25);
+    }
+
+    /* Form Card */
+    .broker-form-card {
+        background: linear-gradient(145deg, #111827 0%, #0F172A 100%);
+        border: 1px solid rgba(245, 158, 11, 0.35);
+        border-radius: 20px;
+        padding: 24px 20px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5), 0 0 15px rgba(245, 158, 11, 0.1);
+    }
+
+    .form-group {
+        margin-bottom: 20px;
+    }
+
+    .form-label {
+        display: flex;
+        align-items: center;
+        font-size: 13px;
+        font-weight: 700;
+        color: #E2E8F0;
+        margin-bottom: 8px;
+        letter-spacing: 0.5px;
+    }
+
+    .form-label .status-dot {
+        margin-left: 6px;
+        width: 8px;
+        height: 8px;
+    }
+
+    .input-wrapper {
+        position: relative;
+        display: flex;
+        align-items: center;
+    }
+
+    .input-icon {
+        position: absolute;
+        left: 16px;
+        color: #F59E0B;
+        font-size: 15px;
+        pointer-events: none;
+    }
+
+    .form-control {
+        width: 100%;
+        height: 52px;
+        background: rgba(15, 23, 42, 0.85);
+        border: 1px solid rgba(245, 158, 11, 0.3);
+        border-radius: 12px;
+        padding: 0 16px 0 46px;
+        color: #FFFFFF;
+        font-size: 15px;
+        font-weight: 500;
+        transition: all 0.2s ease;
+    }
+
+    .form-control:focus {
+        outline: none;
+        border-color: #F59E0B;
+        box-shadow: 0 0 12px rgba(245, 158, 11, 0.3);
+        background: rgba(15, 23, 42, 1);
+    }
+
+    .form-control::placeholder {
+        color: rgba(255, 255, 255, 0.35);
+        font-weight: 400;
+    }
+
+    select.form-control {
+        appearance: none;
+        -webkit-appearance: none;
+        cursor: pointer;
+        background-image: url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%23F59E0B%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E");
+        background-repeat: no-repeat;
+        background-position: right 16px center;
+        background-size: 12px;
+        padding-right: 40px;
+    }
+
+    select.form-control option {
+        background: #0F172A;
+        color: #FFFFFF;
+    }
+
+    .toggle-password-btn {
+        position: absolute;
+        right: 14px;
+        background: transparent;
+        border: none;
+        color: rgba(255, 255, 255, 0.6);
+        cursor: pointer;
+        font-size: 16px;
+        padding: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: color 0.2s ease;
+    }
+
+    .toggle-password-btn:hover {
+        color: #F59E0B;
+    }
+
+    /* Primary CTA Button: Full-width rounded pill in orange/gold gradient */
+    .btn-continue {
+        width: 100%;
+        height: 54px;
+        margin-top: 10px;
+        background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%);
+        border: none;
+        border-radius: 9999px;
+        color: #0F172A;
+        font-size: 16px;
+        font-weight: 800;
+        letter-spacing: 1px;
+        text-transform: uppercase;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        box-shadow: 0 4px 18px rgba(245, 158, 11, 0.45);
+        transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    .btn-continue:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 24px rgba(245, 158, 11, 0.6);
+    }
+
+    .btn-continue:active {
+        transform: translateY(0);
+    }
+
+    .security-note {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        margin-top: 18px;
+        font-size: 11px;
+        color: rgba(255, 255, 255, 0.5);
+    }
+
+    .security-note i {
+        color: #4CAF50;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="broker-container">
+    <!-- Header -->
+    <div class="broker-header-box">
+        <div class="broker-header-icon">
+            <i class="fas fa-plug"></i>
+        </div>
+        <h1 class="broker-title">Enter Your Broker Details</h1>
+        <p class="broker-subtitle">Authorization allows Space-Trade-Fx access to the trading account</p>
+    </div>
+
+    <!-- Existing Connection Status Card -->
+    {% if broker_account and broker_account.is_connected %}
+    <div class="live-status-card">
+        <div class="live-status-header">
+            <span style="font-weight: 700; font-size: 13px; color: #E2E8F0;">Active Connection</span>
+            <span class="live-badge">
+                <span class="status-dot"></span> Connected
+            </span>
+        </div>
+        <div class="live-grid">
+            <div class="live-grid-item">
+                <span class="lbl">Platform</span>
+                <span class="val">{{ broker_account.platform }}</span>
+            </div>
+            <div class="live-grid-item">
+                <span class="lbl">Account ID</span>
+                <span class="val">{{ broker_account.account_login }}</span>
+            </div>
+            <div class="live-grid-item">
+                <span class="lbl">Server</span>
+                <span class="val">{{ broker_account.server }}</span>
+            </div>
+            <div class="live-grid-item">
+                <span class="lbl">Last Synced</span>
+                <span class="val">{{ broker_account.last_synced_at.strftime('%H:%M:%S UTC') if broker_account.last_synced_at else 'Just now' }}</span>
+            </div>
+        </div>
+        <form method="POST" action="{{ url_for('mobile.connect_broker') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="action" value="disconnect">
+            <button type="submit" class="btn-disconnect">
+                <i class="fas fa-unlink"></i> Disconnect This Account
+            </button>
+        </form>
+    </div>
+    {% endif %}
+
+    <!-- Broker Input Form -->
+    <div class="broker-form-card">
+        <form method="POST" action="{{ url_for('mobile.connect_broker') }}" id="brokerForm">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+            <!-- Field 1: Trading Platform -->
+            <div class="form-group">
+                <label class="form-label" for="platformSelect">
+                    Trading Platform <span class="status-dot"></span>
+                </label>
+                <div class="input-wrapper">
+                    <i class="fas fa-layer-group input-icon"></i>
+                    <select class="form-control" id="platformSelect" name="platform" required>
+                        <option value="MT5" {% if not broker_account or broker_account.platform == 'MT5' %}selected{% endif %}>
+                            MetaTrader 5 (MT5)
+                        </option>
+                        <option value="MT4" {% if broker_account and broker_account.platform == 'MT4' %}selected{% endif %}>
+                            MetaTrader 4 (MT4)
+                        </option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Field 2: Server -->
+            <div class="form-group">
+                <label class="form-label" for="serverInput">
+                    Server
+                </label>
+                <div class="input-wrapper">
+                    <i class="fas fa-server input-icon"></i>
+                    <input 
+                        type="text" 
+                        class="form-control" 
+                        id="serverInput" 
+                        name="server" 
+                        placeholder="Exness-MT5Real10"
+                        value="{{ broker_account.server if broker_account else '' }}" 
+                        required 
+                        autocomplete="off"
+                        spellcheck="false"
+                    >
+                </div>
+            </div>
+
+            <!-- Field 3: Login -->
+            <div class="form-group">
+                <label class="form-label" for="loginInput">
+                    Login
+                </label>
+                <div class="input-wrapper">
+                    <i class="fas fa-user input-icon"></i>
+                    <input 
+                        type="text" 
+                        class="form-control" 
+                        id="loginInput" 
+                        name="login" 
+                        placeholder="906777242"
+                        value="{{ broker_account.account_login if broker_account else '' }}" 
+                        required 
+                        autocomplete="off"
+                    >
+                </div>
+            </div>
+
+            <!-- Field 4: Password with Eye Toggle -->
+            <div class="form-group">
+                <label class="form-label" for="passwordInput">
+                    Password
+                </label>
+                <div class="input-wrapper">
+                    <i class="fas fa-lock input-icon"></i>
+                    <input 
+                        type="password" 
+                        class="form-control" 
+                        id="passwordInput" 
+                        name="password" 
+                        placeholder="Enter broker password"
+                        required 
+                        autocomplete="current-password"
+                        style="padding-right: 48px;"
+                    >
+                    <button type="button" class="toggle-password-btn" id="togglePasswordBtn" aria-label="Toggle password visibility">
+                        <i class="fas fa-eye" id="togglePasswordIcon"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Primary CTA Button -->
+            <button type="submit" class="btn-continue">
+                Continue <i class="fas fa-arrow-right"></i>
+            </button>
+        </form>
+
+        <div class="security-note">
+            <i class="fas fa-shield-alt"></i>
+            <span>Institutional AES-256 Symmetric Encryption Vault</span>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    const toggleBtn = document.getElementById("togglePasswordBtn");
+    const pwdInput = document.getElementById("passwordInput");
+    const pwdIcon = document.getElementById("togglePasswordIcon");
+
+    if (toggleBtn && pwdInput && pwdIcon) {
+        toggleBtn.addEventListener("click", function() {
+            if (pwdInput.type === "password") {
+                pwdInput.type = "text";
+                pwdIcon.classList.remove("fa-eye");
+                pwdIcon.classList.add("fa-eye-slash");
+            } else {
+                pwdInput.type = "password";
+                pwdIcon.classList.remove("fa-eye-slash");
+                pwdIcon.classList.add("fa-eye");
+            }
+        });
+    }
+});
+</script>
+{% endblock %}

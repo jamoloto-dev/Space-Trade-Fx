@@ -1,0 +1,312 @@
+"""Comprehensive tests for MT4/MT5 Broker Execution Bridge and Credential Vault."""
+
+from __future__ import annotations
+
+from decimal import Decimal
+
+import pytest
+from flask_dashboard import create_app
+from flask_dashboard.extensions import db
+from flask_dashboard.license_manager import create_user_license
+from flask_dashboard.models import BrokerAccount, User
+from flask_dashboard.services.broker_bridge import (
+    BrokerConnectionError,
+    BrokerValidationError,
+    decrypt_broker_password,
+    encrypt_broker_password,
+    execute_robot_trade,
+    verify_and_connect,
+)
+from flask_dashboard.trading_engine import TradingEngine
+
+
+@pytest.fixture
+def app():
+    test_app = create_app(
+        {
+            "TESTING": True,
+            "SQLALCHEMY_DATABASE_URI": "sqlite:///:memory:",
+            "WTF_CSRF_ENABLED": False,
+            "RATELIMIT_ENABLED": False,
+            "BROKER_ENCRYPTION_KEY": "test-institutional-broker-encryption-key-for-unit-tests",
+        }
+    )
+    with test_app.app_context():
+        db.create_all()
+        yield test_app
+        db.session.remove()
+        db.drop_all()
+
+
+@pytest.fixture
+def client(app):
+    return test_app_client(app)
+
+
+def test_app_client(app):
+    return app.test_client()
+
+
+def test_symmetric_credential_encryption_and_decryption(app):
+    with app.app_context():
+        raw_password = "InstitutionalTraderPassword99#!"
+        encrypted = encrypt_broker_password(raw_password)
+
+        assert encrypted != raw_password
+        assert not encrypted.startswith(raw_password)
+        assert len(encrypted) > 40
+
+        decrypted = decrypt_broker_password(encrypted)
+        assert decrypted == raw_password
+
+
+def test_encryption_rejects_empty_inputs(app):
+    with app.app_context():
+        with pytest.raises(BrokerValidationError):
+            encrypt_broker_password("")
+        with pytest.raises(BrokerValidationError):
+            decrypt_broker_password("")
+
+
+def test_verify_and_connect_success(app):
+    with app.app_context():
+        res_mt5 = verify_and_connect("MT5", "Exness-MT5Real10", "906777242", "SecretPass123")
+        assert res_mt5["success"] is True
+        assert res_mt5["platform"] == "MT5"
+        assert res_mt5["server"] == "Exness-MT5Real10"
+        assert res_mt5["login"] == "906777242"
+        assert res_mt5["currency"] == "USD"
+
+        res_mt4 = verify_and_connect("MT4", "ICMarkets-Live01", 12345678, "SecretPass123")
+        assert res_mt4["success"] is True
+        assert res_mt4["platform"] == "MT4"
+
+
+def test_verify_and_connect_validations(app):
+    with app.app_context():
+        with pytest.raises(BrokerValidationError, match="Unsupported trading platform"):
+            verify_and_connect("cTrader", "Exness-Real", "12345", "pass")
+
+        with pytest.raises(BrokerValidationError, match="Invalid broker server name"):
+            verify_and_connect("MT5", "ab", "12345", "pass")
+
+        with pytest.raises(BrokerValidationError, match="Invalid account login ID"):
+            verify_and_connect("MT5", "Exness-Real", "not-a-number", "pass")
+
+        with pytest.raises(BrokerValidationError, match="Invalid broker password"):
+            verify_and_connect("MT5", "Exness-Real", "12345", "12")
+
+
+def test_broker_account_model_and_persistence(app):
+    with app.app_context():
+        user = User(id="user-broker-1", email="broker_trader@example.com")
+        user.set_password("SecurePassword123!")
+        db.session.add(user)
+        db.session.commit()
+
+        encrypted = encrypt_broker_password("RealMT5Password99")
+        account = BrokerAccount(
+            user_id=user.id,
+            platform="MT5",
+            server="Exness-MT5Real10",
+            account_login="906777242",
+            encrypted_password=encrypted,
+            is_connected=True,
+        )
+        db.session.add(account)
+        db.session.commit()
+
+        queried = BrokerAccount.query.filter_by(user_id=user.id).first()
+        assert queried is not None
+        assert queried.platform == "MT5"
+        assert queried.server == "Exness-MT5Real10"
+        assert queried.account_login == "906777242"
+        assert queried.encrypted_password != "RealMT5Password99"
+        assert decrypt_broker_password(queried.encrypted_password) == "RealMT5Password99"
+        assert queried.is_connected is True
+
+
+def test_connect_broker_view_and_disconnect_flow(app):
+    client = app.test_client()
+
+    with app.app_context():
+        user = User(id="ui-trader-1", email="uitrader@example.com")
+        user.set_password("SecureTraderPass1!")
+        db.session.add(user)
+        db.session.commit()
+        create_user_license(user.id, "premium")
+
+    # 1. Unauthenticated gets redirected
+    res_unauth = client.get("/m/connect-broker")
+    assert res_unauth.status_code == 302
+
+    # 2. Login
+    client.post("/login", data={"email": "uitrader@example.com", "password": "SecureTraderPass1!"})
+
+    # 3. View connect broker page
+    res_page = client.get("/m/connect-broker")
+    assert res_page.status_code == 200
+    assert b"Enter Your Broker Details" in res_page.data
+    assert b"Authorization allows Space-Trade-Fx access to the trading account" in res_page.data
+    assert b"Trading Platform" in res_page.data
+    assert b"Continue" in res_page.data
+
+    # 4. Route alias /connect-broker redirects to mobile view
+    alias_res = client.get("/connect-broker")
+    assert alias_res.status_code == 302
+    assert "/m/connect-broker" in alias_res.headers["Location"]
+
+    # 5. Profile page shows Disconnected status
+    prof_before = client.get("/m/profile")
+    assert prof_before.status_code == 200
+    assert b"Disconnected" in prof_before.data
+    assert b"Connect Your Account" in prof_before.data
+
+    # 6. Submit broker credentials
+    post_res = client.post(
+        "/m/connect-broker",
+        data={
+            "platform": "MT5",
+            "server": "Exness-MT5Real10",
+            "login": "906777242",
+            "password": "MySuperSecretBrokerPassword",
+        },
+        follow_redirects=True,
+    )
+    assert post_res.status_code == 200
+    assert b"Successfully connected to Exness-MT5Real10 (MT5)!" in post_res.data
+
+    # 7. Check database record
+    with app.app_context():
+        saved = BrokerAccount.query.filter_by(user_id="ui-trader-1").first()
+        assert saved is not None
+        assert saved.is_connected is True
+        assert saved.server == "Exness-MT5Real10"
+        assert saved.account_login == "906777242"
+        assert decrypt_broker_password(saved.encrypted_password) == "MySuperSecretBrokerPassword"
+
+    # 8. Profile page now displays Connected status badge
+    prof_after = client.get("/m/profile")
+    assert prof_after.status_code == 200
+    assert b"Connected" in prof_after.data
+    assert b"Exness-MT5Real10" in prof_after.data
+
+    # 9. Disconnect action
+    disc_res = client.post(
+        "/m/connect-broker",
+        data={"action": "disconnect"},
+        follow_redirects=True,
+    )
+    assert disc_res.status_code == 200
+    assert b"Broker account disconnected successfully." in disc_res.data
+
+    with app.app_context():
+        saved = BrokerAccount.query.filter_by(user_id="ui-trader-1").first()
+        assert saved.is_connected is False
+
+
+def test_execute_robot_trade_with_connected_account(app):
+    with app.app_context():
+        user = User(id="robot-user-1", email="robot@example.com")
+        user.set_password("SecureRobot123!")
+        db.session.add(user)
+        db.session.commit()
+        create_user_license(user.id, "professional")
+
+        account = BrokerAccount(
+            user_id=user.id,
+            platform="MT5",
+            server="Exness-MT5Real10",
+            account_login="906777242",
+            encrypted_password=encrypt_broker_password("LiveTraderPass#1"),
+            is_connected=True,
+        )
+        db.session.add(account)
+        db.session.commit()
+
+        # Valid BUY execution
+        report = execute_robot_trade(
+            user_id=user.id,
+            symbol="EURUSD",
+            order_type="BUY",
+            volume=Decimal("0.10"),
+            sl=Decimal("1.07500"),
+            tp=Decimal("1.09500"),
+            current_price=Decimal("1.08500"),
+        )
+        assert report["success"] is True
+        assert report["symbol"] == "EURUSD"
+        assert report["order_type"] == "BUY"
+        assert report["volume"] == 0.10
+        assert report["ticket"].startswith("MT5-")
+        assert report["status"] == "FILLED"
+
+        # Check account last_synced_at was updated
+        db.session.refresh(account)
+        assert account.last_synced_at is not None
+
+        # Risk validation rejection (BUY with SL >= TP)
+        with pytest.raises(BrokerValidationError, match="Stop-loss .* must be strictly below Take-profit"):
+            execute_robot_trade(
+                user_id=user.id,
+                symbol="EURUSD",
+                order_type="BUY",
+                volume=Decimal("0.10"),
+                sl=Decimal("1.09500"),
+                tp=Decimal("1.07500"),
+            )
+
+
+def test_execute_robot_trade_rejects_disconnected_account(app):
+    with app.app_context():
+        user = User(id="robot-disc-1", email="robotdisc@example.com")
+        user.set_password("SecureRobot123!")
+        db.session.add(user)
+        db.session.commit()
+
+        account = BrokerAccount(
+            user_id=user.id,
+            platform="MT4",
+            server="ICMarkets-Live",
+            account_login="888888",
+            encrypted_password=encrypt_broker_password("Pass123"),
+            is_connected=False,
+        )
+        db.session.add(account)
+        db.session.commit()
+
+        with pytest.raises(BrokerConnectionError, match="No active, connected MT4/MT5 broker account"):
+            execute_robot_trade(user_id=user.id, symbol="EURUSD", order_type="BUY", volume=0.01)
+
+
+def test_trading_engine_robot_signal_dispatches_to_connected_broker(app):
+    with app.app_context():
+        user = User(id="engine-trader-1", email="enginetrader@example.com")
+        user.set_password("SecureEngine123!")
+        db.session.add(user)
+        db.session.commit()
+        create_user_license(user.id, "professional")
+
+        account = BrokerAccount(
+            user_id=user.id,
+            platform="MT5",
+            server="Pepperstone-MT5Live",
+            account_login="777666",
+            encrypted_password=encrypt_broker_password("LivePass123"),
+            is_connected=True,
+        )
+        db.session.add(account)
+        db.session.commit()
+
+        engine = TradingEngine(user_id=user.id)
+        engine.preferences.trading_enabled = True
+        db.session.commit()
+        trade = engine.execute_trade(currency_pair="EURUSD", signal_type="BUY")
+
+        assert trade is not None
+        assert trade.mt5_ticket is not None
+        assert trade.mt5_ticket.startswith("MT5-")
+        assert trade.broker_order_id == trade.mt5_ticket
+        assert trade.broker_response is not None
+        assert trade.broker_response["status"] == "FILLED"
+        assert trade.signal_data.get("broker_execution") is not None

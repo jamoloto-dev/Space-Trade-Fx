@@ -42,6 +42,9 @@ class User(UserMixin, db.Model):
     trading_preferences = db.relationship("TradingPreference", backref="user", uselist=False, lazy=True)
     trades = db.relationship("Trade", backref="user", lazy=True)
     notifications = db.relationship("Notification", backref="user", lazy=True)
+    broker_account = db.relationship(
+        "BrokerAccount", backref="user", uselist=False, lazy=True, cascade="all, delete-orphan"
+    )
 
     def set_password(self, password: str):
         if password is None:
@@ -310,3 +313,24 @@ class AuditEvent(db.Model):
     request_id = db.Column(db.String(64), nullable=True)
     event_metadata = db.Column("metadata", db.JSON, nullable=False, default=dict)
     created_at = db.Column(db.DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class BrokerAccount(db.Model):
+    """Encrypted credential vault and bridge link for user MT4/MT5 accounts."""
+
+    __tablename__ = "broker_accounts"
+    __table_args__ = (
+        CheckConstraint("platform IN ('MT4', 'MT5')", name="ck_broker_accounts_platform"),
+        db.Index("idx_broker_accounts_user", "user_id"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.String, db.ForeignKey("users.id"), unique=True, nullable=False)
+    platform = db.Column(db.String(10), default="MT5", nullable=False)
+    server = db.Column(db.String(100), nullable=False)
+    account_login = db.Column(db.String(64), nullable=False)
+    encrypted_password = db.Column(db.Text, nullable=False)
+    is_connected = db.Column(db.Boolean, default=True, nullable=False)
+    last_synced_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    created_at = db.Column(db.DateTime(timezone=True), default=utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)

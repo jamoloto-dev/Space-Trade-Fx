@@ -204,6 +204,9 @@ def profile():
         return redirect(url_for("mobile.profile"))
 
     license_obj = License.query.filter_by(user_id=current_user.id, status="active").first()
+    from ..models import BrokerAccount
+
+    broker_account = BrokerAccount.query.filter_by(user_id=current_user.id).first()
 
     mentor_stats = None
     if current_user.is_mentor:
@@ -214,7 +217,88 @@ def profile():
         except Exception:
             current_app.logger.exception("Failed to fetch mentor stats for user %s", current_user.id)
 
-    return render_template("mobile_profile.html", license=license_obj, mentor_stats=mentor_stats, active_page="profile")
+    return render_template(
+        "mobile_profile.html",
+        license=license_obj,
+        mentor_stats=mentor_stats,
+        broker_account=broker_account,
+        active_page="profile",
+    )
+
+
+@mobile_bp.route("/connect-broker", methods=["GET", "POST"])
+@login_required
+def connect_broker():
+    """Connect or update MT4/MT5 broker account credentials."""
+    from ..extensions import db
+    from ..models import BrokerAccount, utcnow
+    from ..services.broker_bridge import (
+        BrokerError,
+        encrypt_broker_password,
+        verify_and_connect,
+    )
+
+    broker_account = BrokerAccount.query.filter_by(user_id=current_user.id).first()
+
+    if request.method == "POST":
+        action = request.form.get("action")
+        if action == "disconnect":
+            if broker_account:
+                broker_account.is_connected = False
+                db.session.commit()
+                flash("Broker account disconnected successfully.", "info")
+            return redirect(url_for("mobile.connect_broker"))
+
+        platform = request.form.get("platform", "MT5").strip().upper()
+        server = request.form.get("server", "").strip()
+        login = request.form.get("login", "").strip()
+        password = request.form.get("password", "").strip()
+
+        if platform not in {"MT4", "MT5"}:
+            flash("Please select MetaTrader 4 or MetaTrader 5.", "error")
+            return render_template("mobile_connect_broker.html", broker_account=broker_account, active_page="profile")
+
+        if not server or len(server) < 3:
+            flash("Please enter a valid broker server name.", "error")
+            return render_template("mobile_connect_broker.html", broker_account=broker_account, active_page="profile")
+
+        if not login or not login.isdigit():
+            flash("Please enter a valid numeric account login ID.", "error")
+            return render_template("mobile_connect_broker.html", broker_account=broker_account, active_page="profile")
+
+        if not password or len(password) < 3:
+            flash("Please enter your broker account password.", "error")
+            return render_template("mobile_connect_broker.html", broker_account=broker_account, active_page="profile")
+
+        try:
+            verify_and_connect(platform=platform, server=server, login=login, password=password)
+        except BrokerError as exc:
+            flash(f"Connection verification failed: {exc}", "error")
+            return render_template("mobile_connect_broker.html", broker_account=broker_account, active_page="profile")
+        except Exception as exc:
+            current_app.logger.exception("Failed to connect broker for user %s", current_user.id)
+            flash(f"Connection error: {exc}", "error")
+            return render_template("mobile_connect_broker.html", broker_account=broker_account, active_page="profile")
+
+        if not broker_account:
+            broker_account = BrokerAccount(user_id=current_user.id)
+            db.session.add(broker_account)
+
+        broker_account.platform = platform
+        broker_account.server = server
+        broker_account.account_login = login
+        broker_account.encrypted_password = encrypt_broker_password(password)
+        broker_account.is_connected = True
+        broker_account.last_synced_at = utcnow()
+        db.session.commit()
+
+        flash(
+            f"Successfully connected to {server} ({platform})! Automated robot signals will execute on your account.",
+            "success",
+        )
+        return redirect(url_for("mobile.profile"))
+
+    return render_template("mobile_connect_broker.html", broker_account=broker_account, active_page="profile")
 
 
 @mobile_bp.route("/notifications", methods=["GET", "POST"])
