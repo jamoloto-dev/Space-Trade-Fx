@@ -84,7 +84,7 @@ jobs:
 
       - name: Verify Alembic migrations and zero drift
         env:
-          DATABASE_URL: postgresql://test:test@localhost:5432/test_spacetradingfx
+          DATABASE_URL: postgresql+psycopg2://test:test@localhost:5432/test_spacetradingfx
         run: |
           alembic upgrade head
           alembic check
@@ -93,7 +93,7 @@ jobs:
         env:
           FLASK_ENV: testing
           SESSION_SECRET: test-secret-key-for-ci
-          DATABASE_URL: postgresql://test:test@localhost:5432/test_spacetradingfx
+          DATABASE_URL: postgresql+psycopg2://test:test@localhost:5432/test_spacetradingfx
         run: |
           pytest SpaceTradingFX/tests/ -v --cov=SpaceTradingFX/flask_dashboard --cov-report=xml --cov-report=term-missing
 

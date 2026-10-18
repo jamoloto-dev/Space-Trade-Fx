@@ -16,6 +16,8 @@ target_metadata = Base.metadata
 
 database_url = os.environ.get("DATABASE_URL")
 if database_url:
+    if database_url.startswith("postgresql://") and not database_url.startswith(("postgresql+psycopg2://", "postgresql+psycopg://")):
+        database_url = "postgresql+psycopg2://" + database_url[len("postgresql://"):]
     config.set_main_option("sqlalchemy.url", database_url)
 def run_migrations_offline() -> None:
     context.configure(
