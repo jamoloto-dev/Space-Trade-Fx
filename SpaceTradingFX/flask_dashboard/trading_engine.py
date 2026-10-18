@@ -11,9 +11,11 @@ from flask import current_app
 from sqlalchemy import update
 from sqlalchemy.exc import IntegrityError
 
+from .analytics import compute_institutional_tear_sheet
 from .audit import record_audit_event
 from .extensions import db
 from .forex_data import get_forex_provider, parse_market_timestamp
+from .market_microstructure import QuoteNBBO, simulate_market_fill
 from .models import PaperOrderEvent, PaperReconciliationRun, Trade, TradingPreference, TradingSignal, utcnow
 from .paper_orders import InvalidPaperOrder, PaperOrderIntent, assert_transition, validate_intent
 from .risk import PaperRiskRejected, assert_paper_intent_allowed
@@ -204,6 +206,16 @@ class TradingEngine:
             )
         except InvalidPaperOrder as exc:
             raise PaperTradeValidationError(str(exc)) from exc
+        # Institutional Transaction Cost Analysis (TCA) and NBBO quote model
+        inst = instrument(currency_pair)
+        spread = inst.pip_size * Decimal("2")
+        quote_nbbo = QuoteNBBO(
+            symbol=currency_pair,
+            bid=entry_price - (spread / Decimal("2")),
+            ask=entry_price + (spread / Decimal("2")),
+        )
+        fill_report = simulate_market_fill(quote_nbbo, direction, lot_size)
+
         trade = Trade(
             user_id=self.user_id,
             currency_pair=currency_pair,
@@ -222,9 +234,21 @@ class TradingEngine:
                 "execution_mode": "paper",
                 "simulation": True,
                 "submission_mode": submission_mode,
-                "fill_assumption": "next observed close; no spread, commission, slippage, or partial fills",
+                "fill_assumption": "next observed close; institutional TCA and fee attribution recorded",
                 "pnl_units": "simulated account units (USD-assumed; no FX conversion)",
                 "planned_stop_loss": str(planned_loss),
+                "execution_fill": {
+                    "fill_price": str(fill_report.fill_price),
+                    "slippage": str(fill_report.slippage),
+                    "slippage_bps": str(fill_report.slippage_bps),
+                    "gross_notional": str(fill_report.gross_notional),
+                    "sec_fee": str(fill_report.sec_fee),
+                    "finra_taf": str(fill_report.finra_taf),
+                    "exchange_fee": str(fill_report.exchange_fee),
+                    "broker_commission": str(fill_report.broker_commission),
+                    "total_fees": str(fill_report.total_fees),
+                    "net_notional": str(fill_report.net_notional),
+                },
             },
         )
         try:
@@ -255,12 +279,15 @@ class TradingEngine:
         return trade
 
     def _calculate_lot_size(self, symbol: str) -> Decimal:
-        """Use the configured fixed paper lot; risk percentage is not a lot multiplier."""
+        """Use the configured fixed paper lot or equity shares; risk percentage is not a multiplier."""
         configured = (self.preferences.strategy_settings or {}).get("lot_sizes", {})
-        lot = _decimal(configured.get(symbol, DEFAULT_LOT_SIZE), field="configured paper lot size")
+        inst = instrument(symbol)
+        default_size = Decimal("10") if inst.contract_size == Decimal("1") else DEFAULT_LOT_SIZE
+        lot = _decimal(configured.get(symbol, default_size), field="configured paper lot size")
         if lot <= 0:
             raise PaperTradeValidationError("Configured paper lot size must be positive")
-        return lot.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
+        precision = Decimal("1") if inst.contract_size == Decimal("1") else Decimal("0.0001")
+        return lot.quantize(precision, rounding=ROUND_HALF_UP)
 
     def _calculate_sl_tp(self, entry_price: Decimal, direction: str, symbol: str) -> tuple[Decimal, Decimal]:
         stop_distance, target_distance = (
@@ -284,12 +311,15 @@ class TradingEngine:
                     closed_count += 1
             except MarketDataUnavailable as exc:
                 logger.warning("Paper monitoring skipped trade %s: %s", trade.id, exc)
+            except Exception as exc:
+                logger.warning("Paper monitoring error for trade %s: %s", trade.id, exc)
         db.session.commit()
         return closed_count
 
     def _profit_loss(self, trade: Trade, price: Decimal) -> Decimal:
         difference = price - trade.entry_price if trade.trade_type == "BUY" else trade.entry_price - price
-        return (difference * trade.lot_size * Decimal("100000")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        contract_size = instrument(trade.currency_pair).contract_size
+        return (difference * trade.lot_size * contract_size).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
     def _check_exit_conditions(self, trade: Trade, current_price: Decimal) -> bool:
         if trade.trade_type == "BUY":
@@ -388,6 +418,7 @@ class TradingEngine:
         closed = [trade for trade in all_trades if trade.status == "closed"]
         winning = sum(1 for trade in closed if trade.profit_loss > 0)
         losing = sum(1 for trade in closed if trade.profit_loss < 0)
+        tear_sheet = compute_institutional_tear_sheet(closed)
         return {
             "execution_mode": "paper",
             "total_trades": len(all_trades),
@@ -397,6 +428,16 @@ class TradingEngine:
             "total_profit": sum((trade.profit_loss for trade in closed), Decimal("0")),
             "active_trades": sum(1 for trade in all_trades if trade.status == "open"),
             "trades": [trade for trade in all_trades if trade.status == "open"],
+            "tear_sheet": tear_sheet,
+            "sharpe_ratio": tear_sheet.sharpe_ratio,
+            "sortino_ratio": tear_sheet.sortino_ratio,
+            "max_drawdown": tear_sheet.max_drawdown,
+            "max_drawdown_pct": tear_sheet.max_drawdown_pct,
+            "profit_factor": tear_sheet.profit_factor,
+            "payoff_ratio": tear_sheet.payoff_ratio,
+            "total_fees": tear_sheet.total_fees,
+            "average_slippage": tear_sheet.average_slippage,
+            "var_95": tear_sheet.var_95,
         }
 
     @staticmethod

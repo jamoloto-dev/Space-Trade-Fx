@@ -1,14 +1,15 @@
-"""Authoritative paper-market instrument catalogue.
+"""Authoritative paper-market instrument catalogue and security master integration.
 
-The application intentionally supports a small set of spot-FX simulations.  A
-symbol must be present here before it is displayed, analysed, or accepted by
-the paper order service.
+Supports spot-FX and institutional US Equities/ETFs. A symbol must be present here
+before it is displayed, analysed, or accepted by the order service.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from decimal import Decimal
+
+from .securities import SECURITY_REGISTRY
 
 
 @dataclass(frozen=True)
@@ -19,25 +20,26 @@ class PaperInstrument:
     contract_size: Decimal = Decimal("100000")
 
 
+# Authoritative mapping populated with both FX and Equities/ETFs from the Security Master
 PAPER_INSTRUMENTS: dict[str, PaperInstrument] = {
-    "EURUSD": PaperInstrument("EURUSD", Decimal("0.0001"), 5),
-    "GBPUSD": PaperInstrument("GBPUSD", Decimal("0.0001"), 5),
-    "USDJPY": PaperInstrument("USDJPY", Decimal("0.01"), 3),
-    "AUDUSD": PaperInstrument("AUDUSD", Decimal("0.0001"), 5),
-    "USDCAD": PaperInstrument("USDCAD", Decimal("0.0001"), 5),
-    "USDCHF": PaperInstrument("USDCHF", Decimal("0.0001"), 5),
-    "NZDUSD": PaperInstrument("NZDUSD", Decimal("0.0001"), 5),
+    symbol: PaperInstrument(
+        symbol=sec.symbol,
+        pip_size=sec.pip_size,
+        price_decimals=sec.price_decimals,
+        contract_size=sec.contract_size,
+    )
+    for symbol, sec in SECURITY_REGISTRY.items()
 }
 
 SUPPORTED_SYMBOLS = frozenset(PAPER_INSTRUMENTS)
-# Alpha Vantage's intraday endpoint supports these source intervals.  The
-# application rejects rather than relabels 60-minute candles as 4H or daily.
+# Alpha Vantage & broker intraday endpoints support these source intervals.
 SUPPORTED_TIMEFRAMES = frozenset({"1M", "5M", "15M", "1H"})
 DEFAULT_LOT_SIZE = Decimal("0.01")
+DEFAULT_EQUITY_SHARES = Decimal("10")
 
 
 def instrument(symbol: str) -> PaperInstrument:
     try:
-        return PAPER_INSTRUMENTS[symbol]
+        return PAPER_INSTRUMENTS[symbol.upper()]
     except KeyError as exc:
         raise ValueError(f"Unsupported paper symbol: {symbol}") from exc

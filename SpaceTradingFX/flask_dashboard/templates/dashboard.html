@@ -16,6 +16,15 @@
   {{ metric('Paper P/L', 'SIM %.2f'|format(account_summary.total_profit), 'USD-assumed simulated units; not a cash balance', 'success' if account_summary.total_profit >= 0 else 'danger') }}
 </section>
 
+{% if account_summary.tear_sheet and account_summary.total_trades > 0 %}
+<section class="metrics" aria-label="Institutional Quantitative Analytics">
+  {{ metric('Sharpe Ratio', '%.2f'|format(account_summary.sharpe_ratio), 'Annualized (4.5% Rf)', 'success' if account_summary.sharpe_ratio >= 1.0 else ('info' if account_summary.sharpe_ratio >= 0 else 'danger')) }}
+  {{ metric('Sortino Ratio', '%.2f'|format(account_summary.sortino_ratio), 'Downside deviation', 'success' if account_summary.sortino_ratio >= 1.0 else 'info') }}
+  {{ metric('Max Drawdown', '%.1f%%'|format(account_summary.max_drawdown_pct), 'Peak-to-trough', 'danger' if account_summary.max_drawdown_pct > 15 else 'info') }}
+  {{ metric('Profit Factor', '%.2f'|format(account_summary.profit_factor), 'Gross Gains / Losses', 'success' if account_summary.profit_factor >= 1.5 else ('info' if account_summary.profit_factor >= 1.0 else 'danger')) }}
+</section>
+{% endif %}
+
 <section class="card" aria-labelledby="controls-title">
   <p class="eyebrow">Step 1</p><h2 id="controls-title">Prepare your simulation</h2>
   <p class="help">{{ market_data_label }} Treat every result as educational, not investment advice.</p>
