@@ -29,6 +29,7 @@ dependencies = [
     
     # HTTP & API
     "requests>=2.31.0",
+    "urllib3>=2.7.0",
     
     # Data Analysis
     "pandas>=2.0.0",
