@@ -34,11 +34,20 @@ def create_app(config_override: Mapping[str, object] | None = None) -> Flask:
     login_manager.login_view = "auth.login"
     login_manager.login_message = "Please log in to access this page."
 
-    from .models import User
+    # Import all models to ensure complete SQLAlchemy metadata registration
+    from . import models  # noqa: F401
+    from .models import BrokerAccount, User  # noqa: F401
 
     @login_manager.user_loader
     def load_user(user_id: str) -> User | None:
         return db.session.get(User, user_id)
+
+    # Defensive provisioning: Ensure all registered tables (including broker_accounts) exist
+    with app.app_context():
+        try:
+            db.create_all()
+        except Exception as exc:
+            app.logger.warning("Defensive db.create_all() hook encountered error: %s", exc)
 
     _register_blueprints(app)
     _register_health_endpoints(app)
