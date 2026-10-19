@@ -359,6 +359,22 @@ def connect_broker_redirect():
     return redirect(url_for("mobile.connect_broker"))
 
 
+@trading_bp.route("/api/broker/test-trade", methods=["POST"])
+@login_required
+def api_broker_test_trade_alias():
+    """Route alias directing API clients to broker test trade execution."""
+    from ..services.broker_bridge import BrokerError, dispatch_test_ping_trade
+
+    try:
+        result = dispatch_test_ping_trade(current_user.id)
+        return jsonify(result), 200
+    except BrokerError as exc:
+        return jsonify({"success": False, "error": str(exc)}), 400
+    except Exception:
+        current_app.logger.exception("Unexpected error executing broker test trade for user %s", current_user.id)
+        return jsonify({"success": False, "error": "Internal broker bridge execution error."}), 500
+
+
 # Error handlers for the blueprint
 @trading_bp.errorhandler(404)
 def not_found(e):

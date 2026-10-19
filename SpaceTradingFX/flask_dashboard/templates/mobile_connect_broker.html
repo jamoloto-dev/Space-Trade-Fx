@@ -105,10 +105,63 @@
         font-size: 13px;
     }
 
+    /* Live Verification Ping Trade Button */
+    .btn-ping-trade {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        width: 100%;
+        padding: 12px;
+        margin-top: 14px;
+        background: linear-gradient(135deg, #10B981 0%, #059669 100%);
+        border: 1px solid rgba(16, 185, 129, 0.4);
+        border-radius: 10px;
+        color: #FFFFFF;
+        font-weight: 800;
+        font-size: 13px;
+        letter-spacing: 0.5px;
+        text-transform: uppercase;
+        cursor: pointer;
+        box-shadow: 0 4px 15px rgba(16, 185, 129, 0.3);
+        transition: all 0.2s ease;
+    }
+
+    .btn-ping-trade:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 6px 20px rgba(16, 185, 129, 0.45);
+    }
+
+    .btn-ping-trade:disabled {
+        opacity: 0.65;
+        cursor: not-allowed;
+        transform: none;
+    }
+
+    .ping-trade-result {
+        margin-top: 10px;
+        padding: 12px 14px;
+        border-radius: 10px;
+        font-size: 12px;
+        line-height: 1.5;
+    }
+
+    .ping-trade-result.success {
+        background: rgba(16, 185, 129, 0.15);
+        border: 1px solid rgba(16, 185, 129, 0.4);
+        color: #A7F3D0;
+    }
+
+    .ping-trade-result.error {
+        background: rgba(239, 68, 68, 0.15);
+        border: 1px solid rgba(239, 68, 68, 0.4);
+        color: #FCA5A5;
+    }
+
     .btn-disconnect {
         display: block;
         width: 100%;
-        margin-top: 14px;
+        margin-top: 10px;
         padding: 10px;
         background: rgba(244, 67, 54, 0.15);
         border: 1px solid rgba(244, 67, 54, 0.4);
@@ -207,6 +260,37 @@
     select.form-control option {
         background: #0F172A;
         color: #FFFFFF;
+    }
+
+    /* Preset Auto-Suggest Chips */
+    .server-preset-chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-top: 10px;
+    }
+
+    .preset-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 5px 11px;
+        background: rgba(245, 158, 11, 0.12);
+        border: 1px solid rgba(245, 158, 11, 0.35);
+        border-radius: 16px;
+        color: #F59E0B;
+        font-size: 11px;
+        font-weight: 700;
+        cursor: pointer;
+        transition: all 0.15s ease;
+        user-select: none;
+    }
+
+    .preset-chip:hover {
+        background: rgba(245, 158, 11, 0.25);
+        color: #FFFFFF;
+        border-color: #F59E0B;
+        transform: translateY(-1px);
     }
 
     .toggle-password-btn {
@@ -313,6 +397,13 @@
                 <span class="val">{{ broker_account.last_synced_at.strftime('%H:%M:%S UTC') if broker_account.last_synced_at else 'Just now' }}</span>
             </div>
         </div>
+
+        <!-- Live Verification Ping Trade Action -->
+        <button type="button" class="btn-ping-trade" id="btnPingTrade" onclick="sendTestPingTrade()">
+            <i class="fas fa-bolt"></i> Send Test Ping Trade
+        </button>
+        <div id="pingTradeResult" class="ping-trade-result" style="display: none;"></div>
+
         <form method="POST" action="{{ url_for('mobile.connect_broker') }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <input type="hidden" name="action" value="disconnect">
@@ -346,7 +437,7 @@
                 </div>
             </div>
 
-            <!-- Field 2: Server -->
+            <!-- Field 2: Server with Presets & Autocomplete -->
             <div class="form-group">
                 <label class="form-label" for="serverInput">
                     Server
@@ -358,12 +449,38 @@
                         class="form-control" 
                         id="serverInput" 
                         name="server" 
-                        placeholder="Exness-MT5Real10"
+                        list="brokerServerPresets"
+                        placeholder="Exness-MT5Real10, IFXBrokers-Live, Deriv-Server"
                         value="{{ broker_account.server if broker_account else '' }}" 
                         required 
                         autocomplete="off"
                         spellcheck="false"
                     >
+                    <datalist id="brokerServerPresets">
+                        <option value="IFXBrokers-Demo">IFX Brokers Demo</option>
+                        <option value="IFXBrokers-Live">IFX Brokers Live</option>
+                        <option value="Deriv-Demo">Deriv MT5 Demo</option>
+                        <option value="Deriv-Server">Deriv MT5 Live</option>
+                        <option value="Deriv-Server-02">Deriv MT5 Live 02</option>
+                    </datalist>
+                </div>
+                <!-- Quick-select Server Preset Chips -->
+                <div class="server-preset-chips">
+                    <span class="preset-chip" onclick="selectServerPreset('IFXBrokers-Demo')">
+                        <i class="fas fa-circle-dot" style="font-size: 8px;"></i> IFX Demo
+                    </span>
+                    <span class="preset-chip" onclick="selectServerPreset('IFXBrokers-Live')">
+                        <i class="fas fa-circle-dot" style="font-size: 8px;"></i> IFX Live
+                    </span>
+                    <span class="preset-chip" onclick="selectServerPreset('Deriv-Demo')">
+                        <i class="fas fa-chart-line" style="font-size: 8px;"></i> Deriv Demo
+                    </span>
+                    <span class="preset-chip" onclick="selectServerPreset('Deriv-Server')">
+                        <i class="fas fa-chart-line" style="font-size: 8px;"></i> Deriv Live
+                    </span>
+                    <span class="preset-chip" onclick="selectServerPreset('Deriv-Server-02')">
+                        <i class="fas fa-chart-line" style="font-size: 8px;"></i> Deriv Live 02
+                    </span>
                 </div>
             </div>
 
@@ -424,6 +541,65 @@
 </div>
 
 <script>
+function selectServerPreset(serverName) {
+    const input = document.getElementById("serverInput");
+    if (input) {
+        input.value = serverName;
+        input.focus();
+    }
+}
+
+async function sendTestPingTrade() {
+    const btn = document.getElementById("btnPingTrade");
+    const resultBox = document.getElementById("pingTradeResult");
+    if (!btn || !resultBox) return;
+
+    btn.disabled = true;
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Executing Ping Trade...';
+    resultBox.style.display = "none";
+    resultBox.className = "ping-trade-result";
+
+    try {
+        const csrfToken = "{{ csrf_token() }}";
+        const response = await fetch("{{ url_for('mobile.api_broker_test_trade') }}", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "X-CSRFToken": csrfToken,
+            },
+        });
+        const data = await response.json();
+
+        if (response.ok && data.success) {
+            resultBox.className = "ping-trade-result success";
+            resultBox.innerHTML = `
+                <div style="font-weight: 700; margin-bottom: 4px;">
+                    <i class="fas fa-check-circle"></i> ${data.message}
+                </div>
+                <div style="font-size: 11px; opacity: 0.9;">
+                    <strong>Symbol:</strong> ${data.symbol} | 
+                    <strong>Lots:</strong> ${data.volume} | 
+                    <strong>Price:</strong> ${data.fill_price} | 
+                    <strong>Mode:</strong> ${data.filling_mode || 'FOK'}
+                </div>
+            `;
+            resultBox.style.display = "block";
+        } else {
+            resultBox.className = "ping-trade-result error";
+            resultBox.innerHTML = `<i class="fas fa-exclamation-circle"></i> ${data.error || "Execution failed"}`;
+            resultBox.style.display = "block";
+        }
+    } catch (err) {
+        resultBox.className = "ping-trade-result error";
+        resultBox.innerHTML = `<i class="fas fa-exclamation-circle"></i> Network error: ${err.message}`;
+        resultBox.style.display = "block";
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = originalText;
+    }
+}
+
 document.addEventListener("DOMContentLoaded", function() {
     const toggleBtn = document.getElementById("togglePasswordBtn");
     const pwdInput = document.getElementById("passwordInput");

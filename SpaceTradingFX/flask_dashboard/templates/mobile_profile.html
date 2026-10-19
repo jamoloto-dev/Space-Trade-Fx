@@ -93,12 +93,18 @@
         </div>
         {% endif %}
     </div>
+    <div style="margin-bottom: 14px;">
+        <button type="button" class="btn-ping-trade" id="btnProfilePingTrade" onclick="sendProfilePingTrade()">
+            <i class="fas fa-bolt"></i> Send Test Ping Trade
+        </button>
+        <div id="profilePingResult" class="ping-trade-result" style="display: none;"></div>
+    </div>
     {% else %}
     <p class="broker-desc-text">Link your MT4 / MT5 account to execute automated trading robot signals directly on your personal broker account.</p>
     {% endif %}
 
     <a href="{{ url_for('mobile.connect_broker') }}" class="btn-connect-account">
-        <i class="fas fa-plug"></i> Connect Your Account
+        <i class="fas fa-plug"></i> {% if broker_account and broker_account.is_connected %}Manage Broker Account{% else %}Connect Your Account{% endif %}
     </a>
 </div>
 
@@ -609,5 +615,109 @@
     transform: translateY(-2px);
     box-shadow: 0 6px 20px rgba(245, 158, 11, 0.55);
 }
+
+.btn-ping-trade {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+    padding: 12px;
+    background: linear-gradient(135deg, #10B981 0%, #059669 100%);
+    border: 1px solid rgba(16, 185, 129, 0.4);
+    border-radius: 10px;
+    color: #FFFFFF;
+    font-weight: 800;
+    font-size: 13px;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    cursor: pointer;
+    box-shadow: 0 4px 15px rgba(16, 185, 129, 0.3);
+    transition: all 0.2s ease;
+}
+
+.btn-ping-trade:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 20px rgba(16, 185, 129, 0.45);
+}
+
+.btn-ping-trade:disabled {
+    opacity: 0.65;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.ping-trade-result {
+    margin-top: 10px;
+    padding: 12px 14px;
+    border-radius: 10px;
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.ping-trade-result.success {
+    background: rgba(16, 185, 129, 0.15);
+    border: 1px solid rgba(16, 185, 129, 0.4);
+    color: #A7F3D0;
+}
+
+.ping-trade-result.error {
+    background: rgba(239, 68, 68, 0.15);
+    border: 1px solid rgba(239, 68, 68, 0.4);
+    color: #FCA5A5;
+}
 </style>
+
+<script>
+async function sendProfilePingTrade() {
+    const btn = document.getElementById("btnProfilePingTrade");
+    const resultBox = document.getElementById("profilePingResult");
+    if (!btn || !resultBox) return;
+
+    btn.disabled = true;
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Executing Ping Trade...';
+    resultBox.style.display = "none";
+    resultBox.className = "ping-trade-result";
+
+    try {
+        const csrfToken = "{{ csrf_token() }}";
+        const response = await fetch("{{ url_for('mobile.api_broker_test_trade') }}", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "X-CSRFToken": csrfToken,
+            },
+        });
+        const data = await response.json();
+
+        if (response.ok && data.success) {
+            resultBox.className = "ping-trade-result success";
+            resultBox.innerHTML = `
+                <div style="font-weight: 700; margin-bottom: 4px;">
+                    <i class="fas fa-check-circle"></i> ${data.message}
+                </div>
+                <div style="font-size: 11px; opacity: 0.9;">
+                    <strong>Symbol:</strong> ${data.symbol} | 
+                    <strong>Lots:</strong> ${data.volume} | 
+                    <strong>Price:</strong> ${data.fill_price} | 
+                    <strong>Mode:</strong> ${data.filling_mode || 'FOK'}
+                </div>
+            `;
+            resultBox.style.display = "block";
+        } else {
+            resultBox.className = "ping-trade-result error";
+            resultBox.innerHTML = `<i class="fas fa-exclamation-circle"></i> ${data.error || "Execution failed"}`;
+            resultBox.style.display = "block";
+        }
+    } catch (err) {
+        resultBox.className = "ping-trade-result error";
+        resultBox.innerHTML = `<i class="fas fa-exclamation-circle"></i> Network error: ${err.message}`;
+        resultBox.style.display = "block";
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = originalText;
+    }
+}
+</script>
 {% endblock %}

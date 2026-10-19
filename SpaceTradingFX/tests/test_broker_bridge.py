@@ -10,11 +10,15 @@ from flask_dashboard.extensions import db
 from flask_dashboard.license_manager import create_user_license
 from flask_dashboard.models import BrokerAccount, User
 from flask_dashboard.services.broker_bridge import (
+    ORDER_FILLING_FOK,
+    ORDER_FILLING_IOC,
     BrokerConnectionError,
     BrokerValidationError,
     decrypt_broker_password,
     encrypt_broker_password,
     execute_robot_trade,
+    normalize_volume,
+    resolve_filling_mode,
     verify_and_connect,
 )
 from flask_dashboard.trading_engine import TradingEngine
@@ -310,3 +314,133 @@ def test_trading_engine_robot_signal_dispatches_to_connected_broker(app):
         assert trade.broker_response is not None
         assert trade.broker_response["status"] == "FILLED"
         assert trade.signal_data.get("broker_execution") is not None
+
+
+def test_normalize_volume_deriv_and_ifx():
+    # Deriv Volatility 75 Index: min 0.001, step 0.001
+    assert normalize_volume("Volatility 75 Index", 0.0001) == Decimal("0.001")
+    assert normalize_volume("Volatility 75 Index", 0.0034) == Decimal("0.003")
+    assert normalize_volume("Volatility 75 Index", 0.0036) == Decimal("0.004")
+
+    # Deriv Boom 1000 Index: min 0.20, step 0.01
+    assert normalize_volume("Boom 1000 Index", 0.01) == Decimal("0.20")
+    assert normalize_volume("Boom 1000 Index", 0.25) == Decimal("0.25")
+
+    # Deriv Volatility 100 Index: min 0.50, step 0.01
+    assert normalize_volume("Volatility 100 Index", 0.10) == Decimal("0.50")
+    assert normalize_volume("Volatility 100 Index", 1.256) == Decimal("1.26")
+
+    # IFX Brokers standard Forex: min 0.01, step 0.01
+    assert normalize_volume("EURUSD", 0.005) == Decimal("0.01")
+    assert normalize_volume("EURUSD", 0.01) == Decimal("0.01")
+    assert normalize_volume("EURUSD", 0.024) == Decimal("0.02")
+
+    # Clamping maximum
+    assert normalize_volume("EURUSD", 500) == Decimal("100.00")
+
+    # Rejection of invalid volume
+    with pytest.raises(BrokerValidationError, match="Volume must be strictly positive"):
+        normalize_volume("EURUSD", 0)
+
+
+def test_resolve_filling_mode_deriv_and_ifx():
+    # Deriv synthetic indices require FOK
+    assert resolve_filling_mode(server="Deriv-Server") == ORDER_FILLING_FOK
+    assert resolve_filling_mode(server="Deriv-Demo") == ORDER_FILLING_FOK
+    assert resolve_filling_mode(server="Deriv-Server-02") == ORDER_FILLING_FOK
+
+    # Deriv Volatility symbol spec
+    deriv_spec = {"filling_mode": "FOK"}
+    assert resolve_filling_mode(symbol_spec=deriv_spec) == ORDER_FILLING_FOK
+
+    # IFX Brokers requires IOC
+    assert resolve_filling_mode(server="IFXBrokers-Live") == ORDER_FILLING_IOC
+    assert resolve_filling_mode(server="IFXBrokers-Demo") == ORDER_FILLING_IOC
+    ifx_spec = {"filling_mode": "IOC"}
+    assert resolve_filling_mode(symbol_spec=ifx_spec) == ORDER_FILLING_IOC
+
+
+def test_api_broker_test_trade_endpoint_deriv(app):
+    client = app.test_client()
+    with app.app_context():
+        user = User(id="deriv-trader-1", email="deriv@example.com")
+        user.set_password("DerivPass123!")
+        db.session.add(user)
+        db.session.commit()
+        create_user_license(user.id, "professional")
+
+        account = BrokerAccount(
+            user_id=user.id,
+            platform="MT5",
+            server="Deriv-Server",
+            account_login="10293847",
+            encrypted_password=encrypt_broker_password("DerivPassword#1"),
+            is_connected=True,
+        )
+        db.session.add(account)
+        db.session.commit()
+
+    # Login
+    client.post("/login", data={"email": "deriv@example.com", "password": "DerivPass123!"})
+
+    # Trigger test ping trade
+    res = client.post("/api/broker/test-trade")
+    assert res.status_code == 200
+    data = res.get_json()
+    assert data["success"] is True
+    assert data["symbol"] == "Volatility 75 Index"
+    assert data["volume"] == 0.001
+    assert data["ticket_id"].startswith("MT5-")
+    assert data["server"] == "Deriv-Server"
+    assert "filled successfully" in data["message"]
+
+
+def test_api_broker_test_trade_endpoint_ifx(app):
+    client = app.test_client()
+    with app.app_context():
+        user = User(id="ifx-trader-1", email="ifx@example.com")
+        user.set_password("IFXPass123!")
+        db.session.add(user)
+        db.session.commit()
+        create_user_license(user.id, "premium")
+
+        account = BrokerAccount(
+            user_id=user.id,
+            platform="MT5",
+            server="IFXBrokers-Live",
+            account_login="55544433",
+            encrypted_password=encrypt_broker_password("IFXPassword#1"),
+            is_connected=True,
+        )
+        db.session.add(account)
+        db.session.commit()
+
+    # Login
+    client.post("/login", data={"email": "ifx@example.com", "password": "IFXPass123!"})
+
+    # Trigger test ping trade via mobile prefix route
+    res = client.post("/m/api/broker/test-trade")
+    assert res.status_code == 200
+    data = res.get_json()
+    assert data["success"] is True
+    assert data["symbol"] == "EURUSD"
+    assert data["volume"] == 0.01
+    assert data["ticket_id"].startswith("MT5-")
+    assert data["server"] == "IFXBrokers-Live"
+
+
+def test_api_broker_test_trade_without_account(app):
+    client = app.test_client()
+    with app.app_context():
+        user = User(id="no-broker-user", email="nobroker@example.com")
+        user.set_password("NoBrokerPass1!")
+        db.session.add(user)
+        db.session.commit()
+        create_user_license(user.id, "basic")
+
+    client.post("/login", data={"email": "nobroker@example.com", "password": "NoBrokerPass1!"})
+    res = client.post("/api/broker/test-trade")
+    assert res.status_code == 400
+    data = res.get_json()
+    assert data["success"] is False
+    assert "No active, connected broker account found" in data["error"]

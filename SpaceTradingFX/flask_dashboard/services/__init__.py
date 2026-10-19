@@ -45,13 +45,18 @@ from ..notifications import (
 )
 from ..trading_engine import TradingEngine
 from .broker_bridge import (
+    DEFAULT_SYMBOL_SPECS,
     BrokerConnectionError,
     BrokerError,
     BrokerExecutionError,
     BrokerValidationError,
     decrypt_broker_password,
+    dispatch_test_ping_trade,
     encrypt_broker_password,
     execute_robot_trade,
+    get_symbol_spec,
+    normalize_volume,
+    resolve_filling_mode,
     verify_and_connect,
 )
 
@@ -102,8 +107,13 @@ __all__ = [
     "BrokerConnectionError",
     "BrokerValidationError",
     "BrokerExecutionError",
+    "DEFAULT_SYMBOL_SPECS",
     "encrypt_broker_password",
     "decrypt_broker_password",
     "verify_and_connect",
     "execute_robot_trade",
+    "normalize_volume",
+    "resolve_filling_mode",
+    "get_symbol_spec",
+    "dispatch_test_ping_trade",
 ]

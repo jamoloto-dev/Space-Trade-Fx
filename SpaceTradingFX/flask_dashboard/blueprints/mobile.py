@@ -5,7 +5,7 @@ Handles all mobile-optimized routes (/m/*)
 
 from decimal import Decimal, InvalidOperation
 
-from flask import Blueprint, current_app, flash, redirect, render_template, request, url_for
+from flask import Blueprint, current_app, flash, jsonify, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
 
 from ..symbols import DEFAULT_LOT_SIZE, SUPPORTED_SYMBOLS
@@ -299,6 +299,25 @@ def connect_broker():
         return redirect(url_for("mobile.profile"))
 
     return render_template("mobile_connect_broker.html", broker_account=broker_account, active_page="profile")
+
+
+@mobile_bp.route("/api/broker/test-trade", methods=["POST"])
+@login_required
+def api_broker_test_trade():
+    """Execute a verification test ping trade on connected Deriv or IFX Brokers account."""
+    from ..services.broker_bridge import (
+        BrokerError,
+        dispatch_test_ping_trade,
+    )
+
+    try:
+        result = dispatch_test_ping_trade(current_user.id)
+        return jsonify(result), 200
+    except BrokerError as exc:
+        return jsonify({"success": False, "error": str(exc)}), 400
+    except Exception:
+        current_app.logger.exception("Unexpected error executing broker test trade for user %s", current_user.id)
+        return jsonify({"success": False, "error": "Internal broker bridge execution error."}), 500
 
 
 @mobile_bp.route("/notifications", methods=["GET", "POST"])
