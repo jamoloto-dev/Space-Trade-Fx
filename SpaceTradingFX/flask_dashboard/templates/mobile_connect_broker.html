@@ -450,44 +450,39 @@
                         id="serverInput" 
                         name="server" 
                         list="brokerServerPresets"
-                        placeholder="IFXBrokersHoldings-Demo, IFXBrokersHoldings-Real, Deriv-Server"
+                        placeholder="IFXBrokers-Real, IFXBrokers-Demo, Deriv-Server"
                         value="{{ broker_account.server if broker_account else '' }}" 
                         required 
                         autocomplete="off"
                         spellcheck="false"
                     >
                     <datalist id="brokerServerPresets">
-                        <option value="IFXBrokersHoldings-Demo">IFX Brokers Holdings Demo</option>
+                        <option value="IFXBrokers-Real">IFX Brokers Real (Demo & Live MT5)</option>
                         <option value="IFXBrokers-Demo">IFX Brokers Demo</option>
-                        <option value="IFXBrokersHoldings-Real">IFX Brokers Holdings Real</option>
                         <option value="IFXBrokers-Live">IFX Brokers Live</option>
-                        <option value="Deriv-Demo">Deriv MT5 Demo</option>
+                        <option value="IFXBrokersHoldings-Real">IFX Brokers Holdings Real</option>
+                        <option value="IFXBrokersHoldings-Demo">IFX Brokers Holdings Demo</option>
                         <option value="Deriv-Server">Deriv MT5 Live</option>
+                        <option value="Deriv-Demo">Deriv MT5 Demo</option>
                         <option value="Deriv-Server-02">Deriv MT5 Live 02</option>
                     </datalist>
                 </div>
                 <!-- Quick-select Server Preset Chips -->
                 <div class="server-preset-chips">
-                    <span class="preset-chip" onclick="selectServerPreset('IFXBrokersHoldings-Demo')">
-                        <i class="fas fa-circle-dot" style="font-size: 8px;"></i> IFX Holdings Demo
+                    <span class="preset-chip" onclick="selectServerPreset('IFXBrokers-Real')">
+                        <i class="fas fa-circle-dot" style="font-size: 8px;"></i> IFX Real (Demo/Live)
                     </span>
                     <span class="preset-chip" onclick="selectServerPreset('IFXBrokers-Demo')">
                         <i class="fas fa-circle-dot" style="font-size: 8px;"></i> IFX Demo
                     </span>
-                    <span class="preset-chip" onclick="selectServerPreset('IFXBrokersHoldings-Real')">
-                        <i class="fas fa-circle-dot" style="font-size: 8px;"></i> IFX Holdings Real
-                    </span>
                     <span class="preset-chip" onclick="selectServerPreset('IFXBrokers-Live')">
                         <i class="fas fa-circle-dot" style="font-size: 8px;"></i> IFX Live
-                    </span>
-                    <span class="preset-chip" onclick="selectServerPreset('Deriv-Demo')">
-                        <i class="fas fa-chart-line" style="font-size: 8px;"></i> Deriv Demo
                     </span>
                     <span class="preset-chip" onclick="selectServerPreset('Deriv-Server')">
                         <i class="fas fa-chart-line" style="font-size: 8px;"></i> Deriv Live
                     </span>
-                    <span class="preset-chip" onclick="selectServerPreset('Deriv-Server-02')">
-                        <i class="fas fa-chart-line" style="font-size: 8px;"></i> Deriv Live 02
+                    <span class="preset-chip" onclick="selectServerPreset('Deriv-Demo')">
+                        <i class="fas fa-chart-line" style="font-size: 8px;"></i> Deriv Demo
                     </span>
                 </div>
             </div>

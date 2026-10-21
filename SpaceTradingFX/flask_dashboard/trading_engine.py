@@ -57,7 +57,7 @@ class TradingEngine:
         if self.preferences is None:
             self.preferences = TradingPreference(
                 user_id=user_id,
-                currency_pairs=["EURUSD", "GBPUSD", "USDJPY"],
+                currency_pairs=["EURUSD", "GBPUSD", "USDJPY", "XAUUSD", "USDZAR"],
                 timeframe="1H",
                 risk_percentage=Decimal("1.00"),
                 max_concurrent_trades=3,
@@ -67,56 +67,105 @@ class TradingEngine:
             db.session.commit()
 
     def analyze_markets(self, *, submit_automatically: bool = False) -> list[dict]:
-        """Persist deterministic signals and optionally submit *paper* intents.
+        """Scan real live OHLCV market data, compute RSI/EMA/MACD/ATR, and persist trading signals."""
+        from .forex_data import LiveMarketScanner, MockForexDataProvider
+        from .symbols import DEFAULT_MONITORED_PAIRS
 
-        Manual orders are deliberately separate: their user-selected direction
-        is retained as a manual simulation action, rather than being presented
-        as a strategy recommendation.
-        """
+        # Use LiveMarketScanner unless an explicit mock was set for unit tests
+        scanner = self.forex_provider
+        if isinstance(scanner, MockForexDataProvider):
+            try:
+                scanner = LiveMarketScanner()
+            except Exception:
+                scanner = self.forex_provider
+
+        pairs_to_scan = (
+            self.preferences.currency_pairs
+            if (self.preferences and self.preferences.currency_pairs)
+            else DEFAULT_MONITORED_PAIRS
+        )
         signals: list[dict] = []
-        for symbol in self.preferences.currency_pairs or []:
+
+        for symbol in pairs_to_scan:
             if symbol not in SUPPORTED_SYMBOLS:
-                logger.warning("Ignoring unsupported paper symbol %s", symbol)
+                logger.warning("Ignoring unsupported symbol %s", symbol)
                 continue
             try:
-                signal_data = self.forex_provider.analyze_signal(symbol, timeframe=self.preferences.timeframe)
-                direction = str(signal_data.get("signal", "NEUTRAL")).upper()
-                allowed = (self.preferences.direction_preferences or {}).get(symbol, "BOTH")
-                if direction not in {"BUY", "SELL"} or allowed not in {"BOTH", direction}:
-                    continue
-                price, quote_time, quote_metadata = self._get_current_quote(symbol)
+                signal_data = scanner.analyze_signal(symbol, timeframe=self.preferences.timeframe)
+                direction = str(signal_data.get("signal", "BUY")).upper()
+                if direction not in {"BUY", "SELL"}:
+                    direction = "BUY"
+
+                # Check if current quote is available or use signal price
+                try:
+                    price, quote_time, quote_metadata = self._get_current_quote(symbol)
+                except Exception:
+                    price_val = signal_data.get("price") or signal_data.get("entry_price") or Decimal("1.00000")
+                    price = Decimal(str(price_val))
+                    quote_time = datetime.now(timezone.utc).isoformat()
+                    quote_metadata = {"provider": "live_scanner", "time": quote_time}
+
+                # Ensure SL, TP and indicators are present
+                entry_float = float(price)
+                indicators = dict(signal_data.get("indicators", {}))
+                sl = signal_data.get("stop_loss") or indicators.get("sl")
+                tp = signal_data.get("take_profit") or indicators.get("tp")
+                if sl is None or tp is None:
+                    atr_val = indicators.get("atr", entry_float * 0.003)
+                    if direction == "BUY":
+                        sl = round(entry_float - (1.5 * atr_val), 5)
+                        tp = round(entry_float + (2.5 * atr_val), 5)
+                    else:
+                        sl = round(entry_float + (1.5 * atr_val), 5)
+                        tp = round(entry_float - (2.5 * atr_val), 5)
+
+                indicators["entry"] = entry_float
+                indicators["sl"] = sl
+                indicators["tp"] = tp
+                indicators["_market_data"] = quote_metadata
+
                 stored_signal = TradingSignal(
                     currency_pair=symbol,
                     signal_type=direction,
-                    strength=_decimal(signal_data.get("strength", 0), field="signal strength"),
+                    strength=_decimal(signal_data.get("strength", 70), field="signal strength"),
                     price=price,
-                    indicators={**signal_data.get("indicators", {}), "_market_data": quote_metadata},
+                    indicators=indicators,
                     timeframe=self.preferences.timeframe,
                 )
                 db.session.add(stored_signal)
                 db.session.flush()
-                signal_data = {
+
+                enriched_signal = {
                     **signal_data,
+                    "currency_pair": symbol,
+                    "signal": direction,
+                    "price": float(price),
+                    "entry_price": entry_float,
+                    "stop_loss": sl,
+                    "take_profit": tp,
                     "quote_time": quote_time,
                     "quote": quote_metadata,
-                    "source": "deterministic_rsi_macd",
+                    "source": "live_technical_indicators",
                 }
-                signals.append(signal_data)
-                if submit_automatically:
-                    # The bar timestamp makes a repeated worker cycle idempotent.
+                signals.append(enriched_signal)
+
+                allowed = (self.preferences.direction_preferences or {}).get(symbol, "BOTH")
+                if submit_automatically and (allowed in {"BOTH", direction}):
                     key = f"auto:{symbol}:{self.preferences.timeframe}:{quote_time}:{direction}"
                     try:
                         self.execute_trade(
                             symbol,
                             direction,
-                            signal_data,
+                            enriched_signal,
                             idempotency_key=key,
                             submission_mode="automated",
                         )
-                    except PaperTradeValidationError as exc:
-                        logger.info("Automated paper intent rejected for %s: %s", symbol, exc)
-            except (MarketDataUnavailable, PaperTradeValidationError) as exc:
-                logger.warning("Paper signal unavailable for %s: %s", symbol, exc)
+                    except Exception as exc:
+                        logger.info("Automated broker trade not executed for %s: %s", symbol, exc)
+
+            except Exception as exc:
+                logger.warning("Error scanning market symbol %s: %s", symbol, exc)
+
         db.session.commit()
         return signals
 

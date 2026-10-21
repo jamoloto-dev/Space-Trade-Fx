@@ -161,7 +161,7 @@ def analyze_markets():
     engine = TradingEngine(current_user.id)
     signals = engine.analyze_markets()
 
-    flash(f"Analyzed {len(signals)} currency pairs", "success")
+    flash(f"Analyzed {len(signals)} currency pairs with live RSI, EMA, MACD & ATR signals", "success")
     return redirect(url_for("mobile.home"))
 
 

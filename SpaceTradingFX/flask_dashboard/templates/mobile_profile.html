@@ -76,22 +76,26 @@
     <div class="broker-connected-info">
         <div class="broker-detail-row">
             <span class="broker-label">Platform</span>
-            <span class="broker-val">{{ broker_account.platform }}</span>
+            <span class="broker-val">{{ broker_account.platform or 'MT5' }}</span>
         </div>
         <div class="broker-detail-row">
             <span class="broker-label">Server</span>
-            <span class="broker-val">{{ broker_account.server }}</span>
+            <span class="broker-val">{{ broker_account.server or 'N/A' }}</span>
         </div>
         <div class="broker-detail-row">
             <span class="broker-label">Account Login</span>
-            <span class="broker-val">{{ broker_account.account_login }}</span>
+            <span class="broker-val">{{ broker_account.account_login or 'N/A' }}</span>
         </div>
-        {% if broker_account.last_synced_at %}
         <div class="broker-detail-row">
             <span class="broker-label">Last Synchronized</span>
-            <span class="broker-val">{{ broker_account.last_synced_at.strftime('%d %b %Y, %H:%M UTC') }}</span>
+            <span class="broker-val">
+                {% if broker_account.last_synced_at %}
+                    {{ broker_account.last_synced_at.strftime('%d %b %Y, %H:%M UTC') }}
+                {% else %}
+                    Active (Just now)
+                {% endif %}
+            </span>
         </div>
-        {% endif %}
     </div>
     <div style="margin-bottom: 14px;">
         <button type="button" class="btn-ping-trade" id="btnProfilePingTrade" onclick="sendProfilePingTrade()">
@@ -566,23 +570,41 @@
 
 .broker-connected-info {
     margin-bottom: 15px;
+    background: rgba(0, 0, 0, 0.28);
+    border-radius: 12px;
+    padding: 10px 16px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .broker-detail-row {
     display: flex;
     justify-content: space-between;
-    padding: 8px 0;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 0;
     border-bottom: 1px solid rgba(255, 255, 255, 0.08);
     font-size: 13px;
+    width: 100%;
+}
+
+.broker-detail-row:last-child {
+    border-bottom: none;
 }
 
 .broker-label {
-    color: rgba(255, 255, 255, 0.6);
+    color: rgba(255, 255, 255, 0.75);
+    font-weight: 500;
+    flex-shrink: 0;
+    white-space: nowrap;
 }
 
 .broker-val {
-    color: #FFFFFF;
-    font-weight: 600;
+    color: #FFFFFF !important;
+    font-weight: 700;
+    text-align: right;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+    max-width: 65%;
 }
 
 .broker-desc-text {

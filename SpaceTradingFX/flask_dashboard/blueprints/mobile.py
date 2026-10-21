@@ -21,7 +21,7 @@ DEFAULT_LOT_SIZES = {symbol: DEFAULT_LOT_SIZE for symbol in SUPPORTED_SYMBOLS}
 def home():
     """Mobile Home Screen - Broker Connection and Robot Status"""
     from ..license_manager import check_license_valid
-    from ..models import BrokerAccount, TradingPreference
+    from ..models import BrokerAccount, TradingPreference, TradingSignal
     from ..trading_engine import TradingEngine
 
     is_valid, license_info = check_license_valid(current_user.id)
@@ -29,6 +29,7 @@ def home():
     account_summary = engine.get_account_summary()
     preferences = TradingPreference.query.filter_by(user_id=current_user.id).first()
     broker_account = BrokerAccount.query.filter_by(user_id=current_user.id).first()
+    latest_signals = TradingSignal.query.order_by(TradingSignal.created_at.desc()).limit(6).all()
 
     return render_template(
         "mobile_home.html",
@@ -38,6 +39,7 @@ def home():
         account_summary=account_summary,
         preferences=preferences,
         broker_account=broker_account,
+        latest_signals=latest_signals,
         active_page="home",
     )
 

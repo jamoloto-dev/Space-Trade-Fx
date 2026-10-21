@@ -52,9 +52,9 @@
             <div class="trade-details">
                 <div class="detail-row">
                     <span class="detail-label">Entry</span>
-                    <span class="detail-value">{{ "%.5f"|format(trade.entry_price) }}</span>
+                    <span class="detail-value">{{ "%.5f"|format(trade.entry_price) if trade.entry_price is not none else 'N/A' }}</span>
                 </div>
-                {% if trade.exit_price %}
+                {% if trade.exit_price is not none %}
                 <div class="detail-row">
                     <span class="detail-label">Exit</span>
                     <span class="detail-value">{{ "%.5f"|format(trade.exit_price) }}</span>
@@ -62,7 +62,7 @@
                 {% endif %}
                 <div class="detail-row">
                     <span class="detail-label">Lot Size</span>
-                    <span class="detail-value">{{ trade.lot_size }}</span>
+                    <span class="detail-value">{{ trade.lot_size if trade.lot_size is not none else '0.01' }}</span>
                 </div>
                 <div class="detail-row">
                     <span class="detail-label">SL / TP</span>
@@ -230,29 +230,37 @@
 }
 
 .trade-details {
-    background: rgba(0,0,0,0.2);
-    border-radius: 10px;
-    padding: 12px;
+    background: rgba(0,0,0,0.28);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 12px;
+    padding: 12px 16px;
     margin-bottom: 15px;
 }
 
 .detail-row {
     display: flex;
     justify-content: space-between;
-    padding: 6px 0;
-    border-bottom: 1px solid rgba(255,255,255,0.05);
+    align-items: center;
+    gap: 12px;
+    padding: 8px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
 }
 
 .detail-row:last-child { border-bottom: none; }
 
 .detail-label {
-    color: rgba(255,255,255,0.5);
+    color: rgba(255,255,255,0.7);
     font-size: 13px;
+    font-weight: 500;
+    flex-shrink: 0;
 }
 
 .detail-value {
-    font-weight: 600;
+    color: #FFFFFF !important;
+    font-weight: 700;
     font-size: 13px;
+    text-align: right;
+    word-break: break-all;
 }
 
 .trade-footer {
