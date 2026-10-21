@@ -66,6 +66,12 @@ from .broker_bridge import (
     resolve_filling_mode,
     verify_and_connect,
 )
+from .news_intelligence import (
+    MacroNewsEngine,
+    check_ai_veto,
+    evaluate_macro_sentiment,
+    get_macro_pulse,
+)
 
 __all__ = [
     # Notifications
@@ -129,4 +135,9 @@ __all__ = [
     "resolve_filling_mode",
     "get_symbol_spec",
     "dispatch_test_ping_trade",
+    # News & Macro Intelligence
+    "MacroNewsEngine",
+    "check_ai_veto",
+    "evaluate_macro_sentiment",
+    "get_macro_pulse",
 ]

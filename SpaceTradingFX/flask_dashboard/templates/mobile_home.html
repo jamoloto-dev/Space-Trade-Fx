@@ -145,7 +145,7 @@
             </label>
         </div>
     </div>
-    
+
     <!-- Quick Actions -->
     <a href="{{ url_for('trading.analyze_markets') }}" class="action-card">
         <div class="icon"><i class="fas fa-search-dollar"></i></div>
@@ -167,6 +167,32 @@
             <p>HAVE A VALID LICENSE KEY</p>
         </div>
     </a>
+    {% endif %}
+
+    {% if macro_pulse %}
+    <!-- AI News & Macro Pulse Card -->
+    <div class="action-card" style="margin-bottom: 15px; border-radius: 14px; background: linear-gradient(135deg, rgba(20, 24, 38, 0.95), rgba(30, 36, 56, 0.95)); border: 1px solid rgba(255,255,255,0.12); padding: 14px 16px; box-shadow: 0 4px 18px rgba(0,0,0,0.35);">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <span class="status-dot" style="background: {% if macro_pulse.overall_direction == 'BULLISH' %}#10B981{% elif macro_pulse.overall_direction == 'BEARISH' %}#EF4444{% else %}#60A5FA{% endif %};"></span>
+                <span style="font-size: 11px; font-weight: 800; letter-spacing: 0.8px; color: #FFF; text-transform: uppercase;">
+                    🌐 AI NEWS & MACRO PULSE
+                </span>
+            </div>
+            <span style="font-size: 10px; font-weight: 800; padding: 2px 8px; border-radius: 6px; background: {% if macro_pulse.overall_direction == 'BULLISH' %}rgba(16, 185, 129, 0.2); color: #10B981; border: 1px solid #10B981;{% elif macro_pulse.overall_direction == 'BEARISH' %}rgba(239, 68, 68, 0.2); color: #EF4444; border: 1px solid #EF4444;{% else %}rgba(96, 165, 250, 0.2); color: #60A5FA; border: 1px solid #60A5FA;{% endif %}">
+                {{ macro_pulse.overall_direction }} ({{ "%+.2f"|format(macro_pulse.average_score) }})
+            </span>
+        </div>
+        <p style="font-size: 12px; font-weight: 600; color: rgba(255,255,255,0.9); margin: 0 0 6px 0; line-height: 1.4;">
+            "{{ macro_pulse.top_headline }}"
+        </p>
+        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 10px; color: rgba(255,255,255,0.5);">
+            <span><i class="fas fa-newspaper" style="color: #60A5FA; margin-right: 4px;"></i> {{ macro_pulse.top_source }} ({{ macro_pulse.top_symbol }})</span>
+            <span style="background: rgba(255,255,255,0.08); padding: 1px 6px; border-radius: 4px; font-weight: 700; color: #F59E0B;">
+                ⚡ {{ macro_pulse.top_impact }} IMPACT
+            </span>
+        </div>
+    </div>
     {% endif %}
 </div>
 

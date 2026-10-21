@@ -30,6 +30,10 @@ def home():
     preferences = TradingPreference.query.filter_by(user_id=current_user.id).first()
     broker_account = BrokerAccount.query.filter_by(user_id=current_user.id).first()
 
+    from ..services.news_intelligence import get_macro_pulse
+
+    macro_pulse = get_macro_pulse()
+
     return render_template(
         "mobile_home.html",
         user=current_user,
@@ -38,6 +42,7 @@ def home():
         account_summary=account_summary,
         preferences=preferences,
         broker_account=broker_account,
+        macro_pulse=macro_pulse,
         active_page="home",
     )
 
@@ -193,6 +198,10 @@ def history():
     broker_account = BrokerAccount.query.filter_by(user_id=current_user.id, is_connected=True).first()
     telemetry = get_broker_telemetry(current_user.id)
 
+    from ..services.news_intelligence import get_macro_pulse
+
+    macro_pulse = get_macro_pulse()
+
     return render_template(
         "mobile_history.html",
         trades=trades,
@@ -205,6 +214,7 @@ def history():
         telemetry=telemetry,
         currency=telemetry["currency"],
         currency_symbol=telemetry["currency_symbol"],
+        macro_pulse=macro_pulse,
         active_page="history",
     )
 

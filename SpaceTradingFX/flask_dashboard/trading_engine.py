@@ -182,12 +182,48 @@ class TradingEngine:
                 existing_open = Trade.query.filter_by(user_id=self.user_id, currency_pair=symbol, status="open").first()
 
                 from .forex_data import is_rollover_window
+                from .services.news_intelligence import check_ai_veto, evaluate_macro_sentiment
 
                 in_rollover = is_rollover_window()
+
+                # Evaluate AI Veto Gate against live macro news sentiment
+                macro_eval = signal_data.get("macro_sentiment") or evaluate_macro_sentiment(symbol)
+                veto_active, veto_reason = check_ai_veto(symbol, direction, macro_eval)
+                macro_eval["veto_active"] = veto_active
+                macro_eval["veto_reason"] = veto_reason
+
+                if veto_active:
+                    logger.warning(
+                        "AI Veto Gate triggered for %s %s: %s (Trade execution blocked)",
+                        symbol,
+                        direction,
+                        veto_reason,
+                    )
+                    try:
+                        from .notifications import create_notification
+
+                        create_notification(
+                            user_id=self.user_id,
+                            title=f"🚨 AI VETO ACTIVE: {symbol} {direction} Blocked",
+                            message=(
+                                f"Autonomous Auto-Pilot blocked {symbol} {direction} execution: {veto_reason}. "
+                                f"Breaking headline: '{macro_eval.get('headline')}'."
+                            ),
+                            notification_type="risk",
+                            data={
+                                "symbol": symbol,
+                                "direction": direction,
+                                "veto_reason": veto_reason,
+                                "macro_sentiment": macro_eval,
+                            },
+                        )
+                    except Exception:
+                        pass
 
                 if (
                     submit_automatically
                     and not in_rollover
+                    and not veto_active
                     and (allowed in {"BOTH", direction})
                     and (strength_val >= 70.0)
                     and (existing_open is None)
@@ -205,6 +241,8 @@ class TradingEngine:
                         logger.info("Automated broker trade not executed for %s: %s", symbol, exc)
                 elif submit_automatically and in_rollover:
                     logger.info("Rollover spread protection active: skipping automated execution on %s", symbol)
+                elif submit_automatically and veto_active:
+                    logger.info("AI Veto Gate active: skipping automated execution on %s (%s)", symbol, veto_reason)
                 elif submit_automatically and existing_open is not None:
                     logger.info(
                         "Auto-pilot duplicate protection: active position exists for %s, skipping auto-trade", symbol

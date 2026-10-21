@@ -420,6 +420,14 @@ class MockForexDataProvider:
         atr = round(entry * 0.0025, 5)
         sl = round(entry - 1.5 * atr, 5)
         tp = round(entry + 2.5 * atr, 5)
+
+        from .services.news_intelligence import check_ai_veto, evaluate_macro_sentiment
+
+        macro_eval = evaluate_macro_sentiment(currency_pair)
+        veto_active, veto_reason = check_ai_veto(currency_pair, "BUY", macro_eval)
+        macro_eval["veto_active"] = veto_active
+        macro_eval["veto_reason"] = veto_reason
+
         return {
             "currency_pair": currency_pair,
             "timestamp": "2024-01-02T00:00:00Z",
@@ -433,12 +441,18 @@ class MockForexDataProvider:
                 "entry": entry,
                 "sl": sl,
                 "tp": tp,
+                "macro_sentiment": macro_eval,
+                "veto_active": veto_active,
+                "veto_reason": veto_reason,
             },
             "signal": "BUY",
             "strength": 75,
             "entry_price": entry,
             "stop_loss": sl,
             "take_profit": tp,
+            "macro_sentiment": macro_eval,
+            "veto_active": veto_active,
+            "veto_reason": veto_reason,
             "data_mode": "simulation",
             "provider": "deterministic_fixture",
         }
@@ -631,10 +645,23 @@ class LiveMarketScanner:
                 sl = round(latest_close + sl_dist, decimals)
                 tp = round(latest_close - tp_dist, decimals)
 
+            from .services.news_intelligence import check_ai_veto, evaluate_macro_sentiment
+
+            macro_eval = evaluate_macro_sentiment(symbol_clean)
+            veto_active, veto_reason = check_ai_veto(symbol_clean, direction, macro_eval)
+            macro_eval["veto_active"] = veto_active
+            macro_eval["veto_reason"] = veto_reason
+
+            adjusted_strength = strength
+            if not veto_active:
+                adjusted_strength = max(30, min(95, strength + macro_eval.get("confidence_modifier", 0)))
+            else:
+                adjusted_strength = min(strength, 40)
+
             res = {
                 "currency_pair": symbol_clean,
                 "signal": direction,
-                "strength": min(100, strength),
+                "strength": min(100, adjusted_strength),
                 "price": round(latest_close, decimals),
                 "entry_price": round(latest_close, decimals),
                 "stop_loss": sl,
@@ -651,7 +678,13 @@ class LiveMarketScanner:
                     "tp": tp,
                     "mtf_confluence": mtf_confluence,
                     "mtf_badge": mtf_badge,
+                    "macro_sentiment": macro_eval,
+                    "veto_active": veto_active,
+                    "veto_reason": veto_reason,
                 },
+                "macro_sentiment": macro_eval,
+                "veto_active": veto_active,
+                "veto_reason": veto_reason,
                 "timeframe": timeframe,
                 "timestamp": now.isoformat(),
                 "data_mode": "live",
@@ -686,10 +719,23 @@ class LiveMarketScanner:
             }
             mtf_badge = f"M15: {fallback_trend} | H1: {fallback_trend} | H4: {fallback_trend}"
 
+            from .services.news_intelligence import check_ai_veto, evaluate_macro_sentiment
+
+            macro_eval = evaluate_macro_sentiment(symbol_clean)
+            veto_active, veto_reason = check_ai_veto(symbol_clean, fallback_dir, macro_eval)
+            macro_eval["veto_active"] = veto_active
+            macro_eval["veto_reason"] = veto_reason
+
+            fallback_strength = 75 if dir_pref in {"BOTH", fallback_dir} else 0
+            if not veto_active:
+                fallback_strength = max(30, min(95, fallback_strength + macro_eval.get("confidence_modifier", 0)))
+            else:
+                fallback_strength = min(fallback_strength, 40)
+
             res = {
                 "currency_pair": symbol_clean,
                 "signal": fallback_dir,
-                "strength": 75 if dir_pref in {"BOTH", fallback_dir} else 0,
+                "strength": fallback_strength,
                 "price": fallback_price,
                 "entry_price": fallback_price,
                 "stop_loss": sl,
@@ -706,7 +752,13 @@ class LiveMarketScanner:
                     "tp": tp,
                     "mtf_confluence": mtf_confluence,
                     "mtf_badge": mtf_badge,
+                    "macro_sentiment": macro_eval,
+                    "veto_active": veto_active,
+                    "veto_reason": veto_reason,
                 },
+                "macro_sentiment": macro_eval,
+                "veto_active": veto_active,
+                "veto_reason": veto_reason,
                 "timeframe": timeframe,
                 "timestamp": now.isoformat(),
                 "data_mode": "live_fallback",
