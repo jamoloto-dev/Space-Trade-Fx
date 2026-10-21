@@ -96,3 +96,10 @@ def test_execute_market_order_invalid_action():
                 action="HOLD",
             )
         )
+
+
+def test_metaapi_missing_dependency(monkeypatch):
+    monkeypatch.setattr(metaapi_robot, "MetaApi", None)
+    monkeypatch.setenv("METAAPI_TOKEN", "mock_token")
+    with pytest.raises(ImportError, match="metaapi-cloud-sdk is required"):
+        asyncio.run(metaapi_robot.run_trading_robot())

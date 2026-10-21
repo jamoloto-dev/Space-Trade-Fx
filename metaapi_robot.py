@@ -15,7 +15,11 @@ import sys
 from typing import Any
 
 from dotenv import load_dotenv
-from metaapi_cloud_sdk import MetaApi
+
+try:
+    from metaapi_cloud_sdk import MetaApi
+except ImportError:
+    MetaApi = None  # type: ignore[assignment,misc]
 
 # Configure institutional logging format
 logging.basicConfig(
@@ -163,6 +167,12 @@ async def run_trading_robot(
     """Core execution lifecycle: authenticate, connect, synchronize, query, and trade."""
     token, env_account_id = load_credentials()
     target_account_id = account_id or env_account_id
+
+    if MetaApi is None:
+        raise ImportError(
+            "metaapi-cloud-sdk is required to connect to MetaApi. "
+            "Please install it using: pip install metaapi-cloud-sdk"
+        )
 
     logger.info("Initializing MetaApi client...")
     api = MetaApi(token)

@@ -68,6 +68,7 @@ production = [
 trading = [
     # MetaTrader5 - Windows only
     # "MetaTrader5>=5.0.0",
+    "metaapi-cloud-sdk>=29.0.0",
 ]
 
 [project.scripts]
