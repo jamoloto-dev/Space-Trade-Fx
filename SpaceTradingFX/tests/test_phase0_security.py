@@ -130,3 +130,34 @@ def test_notifications_test_endpoint_restricted(app):
         assert rv_admin.get_json()["success"] is True
     finally:
         app.config["TESTING"] = True
+
+
+def test_user_loader_graceful_handling(app):
+    from unittest.mock import patch
+
+    from flask_dashboard.extensions import login_manager
+
+    with app.app_context():
+        user = User(id="user-loader-1", email="loader@example.com")
+        db.session.add(user)
+        db.session.commit()
+
+        loader = login_manager._user_callback
+        assert loader is not None
+
+        # Existing user returns instance
+        loaded = loader("user-loader-1")
+        assert loaded is not None
+        assert loaded.email == "loader@example.com"
+
+        # None or empty user_id returns None safely
+        assert loader(None) is None
+        assert loader("") is None
+
+        # Non-existent user returns None safely
+        assert loader("non-existent-user-id") is None
+
+        # Database/conversion exceptions caught, logged, and return None safely
+        with patch.object(db.session, "get", side_effect=RuntimeError("Simulated DB connection error")):
+            assert loader("user-loader-1") is None
+

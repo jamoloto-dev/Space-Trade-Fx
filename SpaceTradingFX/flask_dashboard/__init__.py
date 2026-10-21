@@ -12,6 +12,8 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 from .config import get_config
 from .extensions import csrf, db, limiter, login_manager
 
+logger = logging.getLogger(__name__)
+
 
 def create_app(config_override: Mapping[str, object] | None = None) -> Flask:
     """Create one explicitly configured SpaceTradingFX web application."""
@@ -39,8 +41,14 @@ def create_app(config_override: Mapping[str, object] | None = None) -> Flask:
     from .models import BrokerAccount, User  # noqa: F401
 
     @login_manager.user_loader
-    def load_user(user_id: str) -> User | None:
-        return db.session.get(User, user_id)
+    def load_user(user_id: str | None) -> User | None:
+        try:
+            if not user_id:
+                return None
+            return db.session.get(User, str(user_id))
+        except Exception as e:
+            logger.error(f"Error loading user {user_id}: {e}")
+            return None
 
     # Defensive provisioning: Ensure all registered tables (including broker_accounts) exist
     with app.app_context():
