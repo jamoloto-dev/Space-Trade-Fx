@@ -356,6 +356,43 @@ class MockForexDataProvider:
             "provider": "deterministic_fixture",
         }
 
+    def get_candles(self, currency_pair: str, interval: str = "1h", limit: int = 100) -> list[dict[str, Any]]:
+        """Return deterministic simulated candles for charting."""
+        import math
+
+        symbol_clean = str(currency_pair).strip().upper()
+        norm_interval = str(interval).strip().lower()
+        step_seconds = 900 if norm_interval == "15m" else (14400 if norm_interval == "4h" else 3600)
+        base_price = float(LiveMarketScanner.FALLBACK_PRICES.get(symbol_clean, 1.0))
+        digits = (
+            3 if symbol_clean.endswith("JPY") else (2 if "XAU" in symbol_clean else (4 if "ZAR" in symbol_clean else 5))
+        )
+        now_ts = int(datetime.now(timezone.utc).timestamp())
+        end_ts = (now_ts // step_seconds) * step_seconds
+        candles = []
+        count = min(limit, 50)
+        curr = base_price
+        for i in range(count):
+            ts = end_ts - ((count - 1 - i) * step_seconds)
+            wave = math.sin(i * 0.3) * (base_price * 0.002)
+            c_price = round(base_price + wave, digits)
+            o_price = round(curr, digits)
+            spread = max(abs(c_price - o_price), base_price * 0.0005)
+            h_price = round(max(o_price, c_price) + (spread * 0.5), digits)
+            l_price = round(min(o_price, c_price) - (spread * 0.5), digits)
+            curr = c_price
+            candles.append(
+                {
+                    "time": ts,
+                    "open": o_price,
+                    "high": h_price,
+                    "low": l_price,
+                    "close": c_price,
+                    "volume": 1000.0,
+                }
+            )
+        return candles
+
     def analyze_signal(self, currency_pair, timeframe="1H"):
         """Return deterministic development signal with indicators and SL/TP levels."""
         if timeframe not in PAPER_TIMEFRAME_INTERVALS:
@@ -690,6 +727,110 @@ class LiveMarketScanner:
             "data_mode": "live",
             "provider": "yfinance",
         }
+
+    def get_candles(self, currency_pair: str, interval: str = "1h", limit: int = 100) -> list[dict[str, Any]]:
+        """Fetch OHLC candles for Lightweight Charts display with fallback."""
+        import math
+
+        symbol_clean = str(currency_pair).strip().upper()
+        ticker_symbol = self.TICKER_MAP.get(symbol_clean, f"{symbol_clean}=X")
+        norm_interval = str(interval).strip().lower()
+        if norm_interval not in {"15m", "1h", "4h"}:
+            norm_interval = "1h"
+
+        digits = 5
+        if symbol_clean.endswith("JPY"):
+            digits = 3
+        elif symbol_clean in {"XAUUSD", "GC=F"}:
+            digits = 2
+        elif symbol_clean == "USDZAR":
+            digits = 4
+
+        candles: list[dict[str, Any]] = []
+
+        try:
+            import yfinance as yf
+
+            ticker = yf.Ticker(ticker_symbol)
+            if norm_interval == "15m":
+                df = ticker.history(period="5d", interval="15m")
+            elif norm_interval == "4h":
+                df_raw = ticker.history(period="1mo", interval="1h")
+                if df_raw is not None and not df_raw.empty:
+                    df = (
+                        df_raw.resample("4h")
+                        .agg(
+                            {
+                                "Open": "first",
+                                "High": "max",
+                                "Low": "min",
+                                "Close": "last",
+                                "Volume": "sum",
+                            }
+                        )
+                        .dropna()
+                    )
+                else:
+                    df = None
+            else:
+                df = ticker.history(period="1mo", interval="1h")
+
+            if df is not None and not df.empty:
+                df = df[~df.index.duplicated(keep="first")].sort_index()
+                if len(df) > limit:
+                    df = df.iloc[-limit:]
+                for idx, row in df.iterrows():
+                    ts = int(idx.timestamp())
+                    candles.append(
+                        {
+                            "time": ts,
+                            "open": round(float(row["Open"]), digits),
+                            "high": round(float(row["High"]), digits),
+                            "low": round(float(row["Low"]), digits),
+                            "close": round(float(row["Close"]), digits),
+                            "volume": float(row.get("Volume", 0)),
+                        }
+                    )
+        except Exception as exc:
+            logger.debug("Live candle fetch failed for %s (%s): %s", symbol_clean, norm_interval, exc)
+
+        if not candles:
+            # Deterministic fallback candles
+            step_seconds = 900 if norm_interval == "15m" else (14400 if norm_interval == "4h" else 3600)
+            base_price = float(self.FALLBACK_PRICES.get(symbol_clean, 1.0))
+            now_ts = int(datetime.now(timezone.utc).timestamp())
+            end_ts = (now_ts // step_seconds) * step_seconds
+            count = min(limit, 50)
+            curr = base_price
+            for i in range(count):
+                ts = end_ts - ((count - 1 - i) * step_seconds)
+                wave = math.sin(i * 0.3) * (base_price * 0.002)
+                c_price = round(base_price + wave, digits)
+                o_price = round(curr, digits)
+                spread = max(abs(c_price - o_price), base_price * 0.0005)
+                h_price = round(max(o_price, c_price) + (spread * 0.5), digits)
+                l_price = round(min(o_price, c_price) - (spread * 0.5), digits)
+                curr = c_price
+                candles.append(
+                    {
+                        "time": ts,
+                        "open": o_price,
+                        "high": h_price,
+                        "low": l_price,
+                        "close": c_price,
+                        "volume": 1000.0,
+                    }
+                )
+
+        return candles
+
+
+def get_market_candles(symbol: str, interval: str = "1h", limit: int = 100) -> list[dict[str, Any]]:
+    """Retrieve OHLC candles for TradingView Lightweight Charts display."""
+    provider = get_forex_provider()
+    if hasattr(provider, "get_candles"):
+        return provider.get_candles(symbol, interval=interval, limit=limit)
+    return LiveMarketScanner().get_candles(symbol, interval=interval, limit=limit)
 
 
 def get_live_market_price(symbol: str) -> Decimal:

@@ -461,6 +461,15 @@ def api_broker_execute_signal():
     return exec_sig()
 
 
+@mobile_bp.route("/api/market/candles/<symbol>")
+@login_required
+def api_market_candles(symbol: str):
+    """Proxy candle requests from mobile surface to trading engine."""
+    from .trading import api_market_candles as get_candles
+
+    return get_candles(symbol)
+
+
 @mobile_bp.route("/api/trading/toggle-auto-pilot", methods=["POST"])
 @login_required
 def api_trading_toggle_auto_pilot():

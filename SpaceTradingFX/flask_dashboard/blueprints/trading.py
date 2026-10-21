@@ -306,6 +306,29 @@ def api_market_signal(currency_pair):
     return jsonify(signal)
 
 
+@trading_bp.route("/api/market/candles/<symbol>")
+@login_required
+def api_market_candles(symbol: str):
+    """Get OHLC candlestick history for Lightweight Charts modal."""
+    from ..forex_data import get_market_candles
+
+    interval = request.args.get("interval", "1h").strip().lower()
+    try:
+        limit = min(max(int(request.args.get("limit", 100)), 10), 500)
+    except (ValueError, TypeError):
+        limit = 100
+    symbol_clean = str(symbol).strip().upper()
+    candles = get_market_candles(symbol_clean, interval=interval, limit=limit)
+    return jsonify(
+        {
+            "success": True,
+            "symbol": symbol_clean,
+            "interval": interval,
+            "candles": candles,
+        }
+    )
+
+
 @trading_bp.route("/api/notifications/count")
 @login_required
 def api_notifications_count():

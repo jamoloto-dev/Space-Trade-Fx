@@ -188,3 +188,103 @@ def test_alerts_feed_view(client, risk_user):
     resp = client.get("/m/alerts")
     assert resp.status_code == 200
     assert b"ALERTS FEED" in resp.data
+
+
+def test_market_candles_api(client, risk_user):
+    with client.session_transaction() as sess:
+        sess["_user_id"] = "test-risk-user"
+
+    # 1. 1h interval
+    resp = client.get("/api/market/candles/EURUSD?interval=1h")
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["success"] is True
+    assert data["symbol"] == "EURUSD"
+    assert data["interval"] == "1h"
+    assert isinstance(data["candles"], list)
+    assert len(data["candles"]) > 0
+    candle = data["candles"][0]
+    assert "time" in candle
+    assert "open" in candle
+    assert "high" in candle
+    assert "low" in candle
+    assert "close" in candle
+
+    # 2. 15m interval via mobile proxy
+    resp15 = client.get("/m/api/market/candles/USDJPY?interval=15m")
+    assert resp15.status_code == 200
+    data15 = resp15.get_json()
+    assert data15["success"] is True
+    assert data15["symbol"] == "USDJPY"
+    assert len(data15["candles"]) > 0
+
+    # 3. 4h interval
+    resp4 = client.get("/api/market/candles/XAUUSD?interval=4h")
+    assert resp4.status_code == 200
+    data4 = resp4.get_json()
+    assert data4["success"] is True
+    assert len(data4["candles"]) > 0
+
+
+def test_chart_modal_rendered_in_history_template(app, client, risk_user):
+    with app.app_context():
+        open_trade = Trade(
+            user_id="test-risk-user",
+            currency_pair="EURUSD",
+            trade_type="BUY",
+            lot_size=Decimal("0.02"),
+            entry_price=Decimal("1.12000"),
+            stop_loss=Decimal("1.11500"),
+            take_profit=Decimal("1.13000"),
+            status="open",
+            execution_mode="broker",
+        )
+        db.session.add(open_trade)
+        db.session.commit()
+
+    with client.session_transaction() as sess:
+        sess["_user_id"] = "test-risk-user"
+
+    resp = client.get("/m/history?filter=open")
+    assert resp.status_code == 200
+    assert b"chart-modal-overlay" in resp.data
+    assert b"VIEW CHART" in resp.data
+    assert b"lightweight-charts" in resp.data
+    assert b"openChartModal" in resp.data
+
+
+def test_rate_limiter_localhost_and_authenticated_exemption():
+    rate_app = create_app(
+        {
+            "TESTING": False,
+            "SQLALCHEMY_DATABASE_URI": "sqlite:///:memory:",
+            "WTF_CSRF_ENABLED": False,
+            "RATELIMIT_ENABLED": True,
+            "SECRET_KEY": "test-secret-key-institutional-12345",
+            "BROKER_ENCRYPTION_KEY": "test-institutional-broker-encryption-key-for-unit-tests",
+        }
+    )
+    with rate_app.app_context():
+        db.create_all()
+        user = User(
+            id="test-rate-user",
+            email="rate-user@institutional.fx",
+            first_name="Rate",
+            last_name="Tester",
+            password_hash="argon2-hash",
+        )
+        db.session.add(user)
+        db.session.commit()
+
+        test_client = rate_app.test_client()
+        with test_client.session_transaction() as sess:
+            sess["_user_id"] = "test-rate-user"
+
+        # Fire 60 rapid requests from localhost to /m/history
+        for _ in range(60):
+            res = test_client.get("/m/history", environ_base={"REMOTE_ADDR": "127.0.0.1"})
+            # Must NOT return 429
+            assert res.status_code != 429, f"Received unexpected HTTP 429: {res.data}"
+
+        db.session.remove()
+        db.drop_all()
