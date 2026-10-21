@@ -6,6 +6,10 @@ Provides environment-specific configurations
 import os
 from datetime import timedelta
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 DEFAULT_DB_PATH = os.path.join(BASE_DIR, "trading.db")
 

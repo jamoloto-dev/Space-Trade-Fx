@@ -616,26 +616,30 @@ def test_metaapi_cloud_trade_dispatch_uses_clean_url(app, monkeypatch):
             "openPrice": 1.08500,
         }
 
-        with patch("requests.post", return_value=mock_resp) as mock_post:
-            result = execute_robot_trade(
-                user_id=user.id,
-                symbol="EURUSD",
-                order_type="BUY",
-                volume=Decimal("0.01"),
-                sl=Decimal("1.07500"),
-                tp=Decimal("1.09500"),
-                current_price=Decimal("1.08500"),
-            )
+        app.config["TESTING"] = False
+        try:
+            with patch("requests.post", return_value=mock_resp) as mock_post:
+                result = execute_robot_trade(
+                    user_id=user.id,
+                    symbol="EURUSD",
+                    order_type="BUY",
+                    volume=Decimal("0.01"),
+                    sl=Decimal("1.07500"),
+                    tp=Decimal("1.09500"),
+                    current_price=Decimal("1.08500"),
+                )
 
-            assert result["success"] is True
-            assert result["ticket"] == "metaapi-ticket-777"
-            assert result["mode"] == "metaapi_cloud"
+                assert result["success"] is True
+                assert result["ticket"] == "metaapi-ticket-777"
+                assert result["mode"] == "metaapi_cloud"
 
-            # Verify the URL posted to has no duplicated domain suffix
-            mock_post.assert_called_once()
-            called_url = mock_post.call_args[0][0]
-            assert (
-                called_url
-                == "https://mt-client-api-v1.london.agiliumtrade.ai/users/current/accounts/mock_acc_999/trade"
-            )
-            assert "agiliumtrade.agiliumtrade.ai" not in called_url
+                # Verify the URL posted to has no duplicated domain suffix
+                mock_post.assert_called_once()
+                called_url = mock_post.call_args[0][0]
+                assert (
+                    called_url
+                    == "https://mt-client-api-v1.london.agiliumtrade.ai/users/current/accounts/mock_acc_999/trade"
+                )
+                assert "agiliumtrade.agiliumtrade.ai" not in called_url
+        finally:
+            app.config["TESTING"] = True

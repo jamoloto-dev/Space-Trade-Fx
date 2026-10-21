@@ -103,3 +103,39 @@ def test_metaapi_missing_dependency(monkeypatch):
     monkeypatch.setenv("METAAPI_TOKEN", "mock_token")
     with pytest.raises(ImportError, match="metaapi-cloud-sdk is required"):
         asyncio.run(metaapi_robot.run_trading_robot())
+
+
+def test_check_token_format():
+    # Valid JWT
+    valid_jwt = "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVm"
+    res = metaapi_robot.check_token_format(valid_jwt)
+    assert res["present"] is True
+    assert res["is_jwt"] is True
+    assert "..." in res["masked"]
+
+    # Missing / None / Empty
+    assert metaapi_robot.check_token_format(None)["present"] is False
+    assert metaapi_robot.check_token_format("")["present"] is False
+    assert metaapi_robot.check_token_format("   ")["present"] is False
+
+    # Non-JWT string
+    res_raw = metaapi_robot.check_token_format("raw_api_key_string")
+    assert res_raw["present"] is True
+    assert res_raw["is_jwt"] is False
+
+
+def test_handle_metaapi_auth_error():
+    # 401 exception with status_code attribute
+    exc_obj = Exception("Request failed with 401 Unauthorized")
+    exc_obj.status_code = 401
+    handled = metaapi_robot.handle_metaapi_auth_error(exc_obj, "mock.token.part")
+    assert handled is True
+
+    # 401 exception with message text
+    exc_msg = Exception("401 Unauthorized: Invalid token credentials")
+    assert metaapi_robot.handle_metaapi_auth_error(exc_msg, "mock.token.part") is True
+
+    # Non-401 exception
+    exc_500 = Exception("500 Internal Server Error")
+    exc_500.status_code = 500
+    assert metaapi_robot.handle_metaapi_auth_error(exc_500, "mock.token.part") is False

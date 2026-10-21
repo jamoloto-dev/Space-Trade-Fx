@@ -14,6 +14,7 @@ import os
 import socket
 import ssl
 import sys
+import uuid
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import Any
 
@@ -970,7 +971,7 @@ def execute_robot_trade(
     # 3. MetaApi Cloud SDK / REST Execution (Linux / Cloud)
     metaapi_token = os.environ.get("METAAPI_TOKEN")
     metaapi_account_id = os.environ.get("METAAPI_ACCOUNT_ID")
-    if metaapi_token and metaapi_account_id:
+    if metaapi_token and metaapi_account_id and not current_app.config.get("TESTING"):
         try:
             import requests
 
@@ -991,7 +992,13 @@ def execute_robot_trade(
             )
             if resp.status_code in {200, 201}:
                 payload = resp.json()
-                real_ticket = str(payload.get("orderId") or payload.get("numericOrderId"))
+                raw_ticket = (
+                    payload.get("orderId")
+                    or payload.get("numericOrderId")
+                    or payload.get("positionId")
+                    or payload.get("numericCode")
+                )
+                real_ticket = str(raw_ticket) if raw_ticket is not None else f"metaapi-{uuid.uuid4().hex[:12]}"
                 fill_price = float(payload.get("openPrice") or (price_dec if price_dec is not None else 0.0))
                 account.last_synced_at = utcnow()
                 db.session.commit()
@@ -1014,6 +1021,22 @@ def execute_robot_trade(
                     "mode": "metaapi_cloud",
                     "executed_at": utcnow().isoformat(),
                 }
+            if resp.status_code == 401:
+                clean_tok = str(metaapi_token).strip()
+                is_jwt = len(clean_tok.split(".")) == 3 and clean_tok.startswith("ey")
+                masked = f"{clean_tok[:8]}...{clean_tok[-6:]}" if len(clean_tok) > 20 else "***"
+                logger.error(
+                    "❌ MetaApi Authentication 401 Unauthorized: Invalid or expired API token. "
+                    "Token present: True, Length: {}, Format: {}, Masked: {}",
+                    len(clean_tok),
+                    "Valid JWT" if is_jwt else "Custom/Non-JWT string",
+                    masked,
+                )
+                raise BrokerConnectionError(
+                    f"MetaApi Authentication 401 Unauthorized: Invalid or expired METAAPI_TOKEN "
+                    f"(present: True, length: {len(clean_tok)}, format: {'Valid JWT' if is_jwt else 'String'}, masked: {masked}). "
+                    "Please generate a fresh token at https://app.metaapi.cloud/token"
+                )
             raise BrokerExecutionError(f"MetaApi Cloud rejected trade (HTTP {resp.status_code}): {resp.text}")
         except requests.exceptions.RequestException as exc:
             raise BrokerConnectionError(f"MetaApi Cloud API unreachable: {exc}") from exc

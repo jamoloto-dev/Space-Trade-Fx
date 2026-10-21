@@ -16,6 +16,9 @@ from typing import Any
 
 from dotenv import load_dotenv
 
+# Explicitly invoke load_dotenv before reading any environment variables
+load_dotenv()
+
 try:
     from metaapi_cloud_sdk import MetaApi
 except ImportError:
@@ -30,14 +33,73 @@ logging.basicConfig(
 logger = logging.getLogger("MetaApiRobot")
 
 
+def check_token_format(token: str | None) -> dict[str, Any]:
+    """Inspect and report whether the METAAPI_TOKEN is present and correctly formatted."""
+    if not token or not str(token).strip():
+        return {
+            "present": False,
+            "length": 0,
+            "is_jwt": False,
+            "masked": "None",
+            "message": "Token is missing or empty.",
+        }
+    clean = str(token).strip()
+    parts = clean.split(".")
+    is_jwt = len(parts) == 3 and clean.startswith("ey")
+    masked = f"{clean[:8]}...{clean[-6:]}" if len(clean) > 20 else "***"
+    return {
+        "present": True,
+        "length": len(clean),
+        "is_jwt": is_jwt,
+        "masked": masked,
+        "message": "Token is present and formatted as a valid JWT."
+        if is_jwt
+        else "Token is present but not standard JWT format.",
+    }
+
+
+def handle_metaapi_auth_error(exc: Exception, token: str | None = None) -> bool:
+    """Check if exception is a 401 Unauthorized, log detailed diagnostics, and return True if handled."""
+    status_code = getattr(exc, "status_code", None)
+    err_msg = str(exc)
+    is_401 = (status_code == 401) or ("401" in err_msg and ("Unauthorized" in err_msg or "unauthorized" in err_msg))
+    if is_401:
+        diag = check_token_format(token)
+        logger.error(
+            "❌ MetaApi Authentication 401 Unauthorized: Invalid or expired API token.\n"
+            "   Token diagnostics:\n"
+            "   - Present: %s\n"
+            "   - Length: %s characters\n"
+            "   - Format: %s\n"
+            "   - Masked: %s\n"
+            "   - Status: %s\n"
+            "👉 Action required: Generate a fresh token from https://app.metaapi.cloud/token and update METAAPI_TOKEN in your .env file.",
+            diag["present"],
+            diag["length"],
+            "Valid JWT" if diag["is_jwt"] else "Custom/Non-JWT string",
+            diag["masked"],
+            diag["message"],
+        )
+        return True
+    return False
+
+
 def load_credentials() -> tuple[str, str | None]:
     """Load API token and optional account ID from environment variables (.env)."""
+    # Explicitly invoke load_dotenv() before reading METAAPI_TOKEN
     load_dotenv()
 
     # Support standard and case-insensitive variations found in .env
     token = os.getenv("METAAPI_TOKEN") or os.getenv("METAAPI_tOKEN") or os.getenv("META_API_TOKEN")
-    if not token:
-        logger.error("METAAPI_TOKEN not found in environment or .env file.")
+    diag = check_token_format(token)
+    if not token or not diag["present"]:
+        logger.error(
+            "METAAPI_TOKEN not found in environment or .env file.\n"
+            "Token diagnostics: Present: %s, Length: %s.\n"
+            "Please add METAAPI_TOKEN=your_token to your .env file.",
+            diag["present"],
+            diag["length"],
+        )
         sys.exit(1)
 
     account_id = os.getenv("METAAPI_ACCOUNT_ID") or os.getenv("ACCOUNT_ID")
@@ -175,7 +237,15 @@ async def run_trading_robot(
         )
 
     logger.info("Initializing MetaApi client...")
-    api = MetaApi(token)
+    diag = check_token_format(token)
+    logger.info(
+        "MetaApi token verified (Present: %s, Length: %s, Format: %s, Masked: %s)",
+        diag["present"],
+        diag["length"],
+        "Valid JWT" if diag["is_jwt"] else "String",
+        diag["masked"],
+    )
+    api = MetaApi(token=token)
 
     connection = None
     try:
@@ -222,6 +292,10 @@ async def run_trading_robot(
         else:
             logger.info("Execution flag not set. Skipping test market order.")
 
+    except Exception as exc:
+        handle_metaapi_auth_error(exc, token)
+        raise
+
     finally:
         if connection:
             logger.info("Closing RPC connection cleanly...")
@@ -260,7 +334,8 @@ def main():
     except KeyboardInterrupt:
         logger.info("Robot operation terminated by user.")
     except Exception as exc:
-        logger.error("Fatal robot error: %s", exc)
+        if not handle_metaapi_auth_error(exc, os.getenv("METAAPI_TOKEN")):
+            logger.error("Fatal robot error: %s", exc)
         sys.exit(1)
 
 
