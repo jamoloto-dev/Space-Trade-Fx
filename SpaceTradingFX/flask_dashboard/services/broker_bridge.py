@@ -996,12 +996,15 @@ def execute_robot_trade(
             )
             if resp.status_code in {200, 201}:
                 payload = resp.json()
-                raw_ticket = (
-                    payload.get("orderId")
-                    or payload.get("numericOrderId")
-                    or payload.get("positionId")
-                    or payload.get("numericCode")
-                )
+                numeric_code = payload.get("numericCode")
+                string_code = payload.get("stringCode")
+                if (numeric_code is not None and numeric_code not in {10008, 10009}) or (
+                    string_code and string_code not in {"TRADE_RETCODE_DONE", "TRADE_RETCODE_PLACED"}
+                ):
+                    err_msg = payload.get("message") or string_code or f"Code {numeric_code}"
+                    raise BrokerExecutionError(f"Broker rejected trade: {err_msg}")
+
+                raw_ticket = payload.get("orderId") or payload.get("numericOrderId") or payload.get("positionId")
                 real_ticket = str(raw_ticket) if raw_ticket is not None else f"metaapi-{uuid.uuid4().hex[:12]}"
                 fill_price = float(payload.get("openPrice") or (price_dec if price_dec is not None else 0.0))
                 account.last_synced_at = utcnow()
