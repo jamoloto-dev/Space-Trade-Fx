@@ -126,11 +126,14 @@ def quotes():
             }
         )
 
+    trading_mode = (preferences.strategy_settings or {}).get("trading_mode", "swing") if preferences else "swing"
+
     return render_template(
         "mobile_quotes.html",
         symbols=symbols,
         broker_platform_label=active_platform,
         trading_enabled=preferences.trading_enabled,
+        trading_mode=trading_mode,
         active_page="quotes",
     )
 
@@ -201,6 +204,7 @@ def history():
     from ..services.news_intelligence import get_macro_pulse
 
     macro_pulse = get_macro_pulse()
+    trading_mode = (preferences.strategy_settings or {}).get("trading_mode", "swing") if preferences else "swing"
 
     return render_template(
         "mobile_history.html",
@@ -215,6 +219,7 @@ def history():
         currency=telemetry["currency"],
         currency_symbol=telemetry["currency_symbol"],
         macro_pulse=macro_pulse,
+        trading_mode=trading_mode,
         active_page="history",
     )
 
@@ -299,6 +304,45 @@ def api_quotes_update_config():
                 "pair": pair,
                 "direction": (preferences.direction_preferences or {}).get(pair, "BOTH"),
                 "lot_size": (preferences.strategy_settings or {}).get("lot_sizes", {}).get(pair, "0.01"),
+            }
+        ),
+        200,
+    )
+
+
+@mobile_bp.route("/api/trading/toggle-mode", methods=["POST"])
+@login_required
+def api_toggle_trading_mode():
+    """Toggle between swing and scalping trading modes."""
+    from ..extensions import db
+    from ..models import TradingPreference
+
+    data = request.get_json(silent=True) or {}
+    mode = str(data.get("mode", "")).strip().lower()
+    if mode not in {"scalping", "swing"}:
+        return jsonify({"success": False, "error": "Invalid trading mode. Use 'scalping' or 'swing'."}), 400
+
+    preferences = TradingPreference.query.filter_by(user_id=current_user.id).first()
+    if not preferences:
+        preferences = TradingPreference(user_id=current_user.id)
+        db.session.add(preferences)
+
+    strat_settings = dict(preferences.strategy_settings or {})
+    strat_settings["trading_mode"] = mode
+    preferences.strategy_settings = strat_settings
+    preferences.timeframe = "5M" if mode == "scalping" else "1H"
+
+    db.session.commit()
+    return (
+        jsonify(
+            {
+                "success": True,
+                "mode": mode,
+                "timeframe": preferences.timeframe,
+                "message": (
+                    f"Trading mode switched to "
+                    f"{'⚡ Ultra Scalping (M1/M5)' if mode == 'scalping' else '📈 Swing Trading (1H/4H)'}"
+                ),
             }
         ),
         200,

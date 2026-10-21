@@ -674,6 +674,15 @@ def api_quotes_toggle():
     return mobile_toggle()
 
 
+@trading_bp.route("/api/trading/toggle-mode", methods=["POST"])
+@login_required
+def api_trading_toggle_mode():
+    """Proxy route to mobile trading toggle mode."""
+    from .mobile import api_toggle_trading_mode as mobile_toggle_mode
+
+    return mobile_toggle_mode()
+
+
 # Error handlers for the blueprint
 @trading_bp.errorhandler(404)
 def not_found(e):

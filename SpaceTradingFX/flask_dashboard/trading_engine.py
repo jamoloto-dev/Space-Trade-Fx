@@ -124,13 +124,20 @@ class TradingEngine:
                 sl = signal_data.get("stop_loss") or indicators.get("sl")
                 tp = signal_data.get("take_profit") or indicators.get("tp")
                 if sl is None or tp is None:
-                    atr_val = indicators.get("atr", entry_float * 0.003)
+                    strat_sett = self.preferences.strategy_settings or {}
+                    is_scalp = (
+                        str(self.preferences.timeframe).strip().upper() in {"1M", "5M", "M1", "M5"}
+                        or strat_sett.get("trading_mode") == "scalping"
+                    )
+                    atr_mult_sl = 1.0 if is_scalp else 1.5
+                    atr_mult_tp = 1.5 if is_scalp else 2.5
+                    atr_val = indicators.get("atr", entry_float * (0.0008 if is_scalp else 0.003))
                     if direction == "BUY":
-                        sl = round(entry_float - (1.5 * atr_val), 5)
-                        tp = round(entry_float + (2.5 * atr_val), 5)
+                        sl = round(entry_float - (atr_mult_sl * atr_val), 5)
+                        tp = round(entry_float + (atr_mult_tp * atr_val), 5)
                     else:
-                        sl = round(entry_float + (1.5 * atr_val), 5)
-                        tp = round(entry_float - (2.5 * atr_val), 5)
+                        sl = round(entry_float + (atr_mult_sl * atr_val), 5)
+                        tp = round(entry_float - (atr_mult_tp * atr_val), 5)
 
                 indicators["entry"] = entry_float
                 indicators["sl"] = sl

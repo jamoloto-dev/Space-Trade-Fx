@@ -13,6 +13,31 @@
 </header>
 
 <div class="container">
+    <!-- Strategy Execution Engine Mode Switcher -->
+    <div class="symbol-card strategy-mode-card" style="margin-bottom: 16px; background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 12px; padding: 14px 16px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+            <div>
+                <div style="font-size: 11px; font-weight: 800; color: #94A3B8; letter-spacing: 0.5px;">STRATEGY EXECUTION ENGINE</div>
+                <div style="font-size: 14px; font-weight: 800; color: #F8FAFC; display: flex; align-items: center; gap: 6px; margin-top: 2px;">
+                    <span id="activeModeLabel">{% if trading_mode == 'scalping' %}⚡ ULTRA SCALPING (M1/M5){% else %}📈 SWING TRADING (1H/4H){% endif %}</span>
+                </div>
+            </div>
+            <span id="modeBadge" style="padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: 800; text-transform: uppercase; {% if trading_mode == 'scalping' %}background: rgba(245, 158, 11, 0.15); color: #F59E0B; border: 1px solid rgba(245, 158, 11, 0.3);{% else %}background: rgba(59, 130, 246, 0.15); color: #3B82F6; border: 1px solid rgba(59, 130, 246, 0.3);{% endif %}">
+                {% if trading_mode == 'scalping' %}M1/M5 FAST{% else %}1H/4H TREND{% endif %}
+            </span>
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; background: rgba(0, 0, 0, 0.3); padding: 4px; border-radius: 8px;">
+            <button type="button" id="btnModeSwing" onclick="switchTradingMode('swing')"
+                style="padding: 10px; border-radius: 6px; border: none; font-size: 12px; font-weight: 800; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; transition: all 0.2s; {% if trading_mode != 'scalping' %}background: #3B82F6; color: #FFF; box-shadow: 0 2px 8px rgba(59, 130, 246, 0.4);{% else %}background: transparent; color: #94A3B8;{% endif %}">
+                📈 Swing Trading (1H/4H)
+            </button>
+            <button type="button" id="btnModeScalp" onclick="switchTradingMode('scalping')"
+                style="padding: 10px; border-radius: 6px; border: none; font-size: 12px; font-weight: 800; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; transition: all 0.2s; {% if trading_mode == 'scalping' %}background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%); color: #FFF; box-shadow: 0 2px 8px rgba(245, 158, 11, 0.4);{% else %}background: transparent; color: #94A3B8;{% endif %}">
+                ⚡ Ultra Scalping (M1/M5)
+            </button>
+        </div>
+    </div>
+
     <form method="POST" action="{{ url_for('mobile.quotes') }}" id="quotesForm">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         {% for symbol in symbols %}
@@ -85,6 +110,70 @@
 </div>
 
 <script>
+async function switchTradingMode(mode) {
+    const csrfInput = document.querySelector('input[name="csrf_token"]');
+    const csrfToken = csrfInput ? csrfInput.value : '';
+    try {
+        const res = await fetch("/api/trading/toggle-mode", {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken
+            },
+            body: JSON.stringify({ mode: mode })
+        });
+        const data = await res.json();
+        if (data.success) {
+            showMiniToast(data.message || `Switched to ${mode}`);
+            const btnSwing = document.getElementById('btnModeSwing');
+            const btnScalp = document.getElementById('btnModeScalp');
+            const lbl = document.getElementById('activeModeLabel');
+            const badge = document.getElementById('modeBadge');
+            if (mode === 'scalping') {
+                if (btnScalp) {
+                    btnScalp.style.background = 'linear-gradient(135deg, #F59E0B 0%, #D97706 100%)';
+                    btnScalp.style.color = '#FFF';
+                    btnScalp.style.boxShadow = '0 2px 8px rgba(245, 158, 11, 0.4)';
+                }
+                if (btnSwing) {
+                    btnSwing.style.background = 'transparent';
+                    btnSwing.style.color = '#94A3B8';
+                    btnSwing.style.boxShadow = 'none';
+                }
+                if (lbl) lbl.textContent = '⚡ ULTRA SCALPING (M1/M5)';
+                if (badge) {
+                    badge.textContent = 'M1/M5 FAST';
+                    badge.style.background = 'rgba(245, 158, 11, 0.15)';
+                    badge.style.color = '#F59E0B';
+                    badge.style.border = '1px solid rgba(245, 158, 11, 0.3)';
+                }
+            } else {
+                if (btnSwing) {
+                    btnSwing.style.background = '#3B82F6';
+                    btnSwing.style.color = '#FFF';
+                    btnSwing.style.boxShadow = '0 2px 8px rgba(59, 130, 246, 0.4)';
+                }
+                if (btnScalp) {
+                    btnScalp.style.background = 'transparent';
+                    btnScalp.style.color = '#94A3B8';
+                    btnScalp.style.boxShadow = 'none';
+                }
+                if (lbl) lbl.textContent = '📈 SWING TRADING (1H/4H)';
+                if (badge) {
+                    badge.textContent = '1H/4H TREND';
+                    badge.style.background = 'rgba(59, 130, 246, 0.15)';
+                    badge.style.color = '#3B82F6';
+                    badge.style.border = '1px solid rgba(59, 130, 246, 0.3)';
+                }
+            }
+        } else {
+            showMiniToast(data.error || 'Failed to switch mode');
+        }
+    } catch (e) {
+        console.error('Mode switch failed:', e);
+    }
+}
+
 function adjustLot(pair, delta) {
     const input = document.getElementById('lot_' + pair);
     let value = parseFloat(input.value) + delta;

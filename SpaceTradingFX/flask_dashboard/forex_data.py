@@ -417,9 +417,15 @@ class MockForexDataProvider:
             "NZDUSD": 0.61000,
         }
         entry = prices.get(currency_pair, 1.10000)
-        atr = round(entry * 0.0025, 5)
-        sl = round(entry - 1.5 * atr, 5)
-        tp = round(entry + 2.5 * atr, 5)
+        is_scalping = str(timeframe).strip().upper() in {"1M", "5M", "M1", "M5"}
+        if is_scalping:
+            atr = round(entry * 0.0008, 5)
+            sl = round(entry - 1.0 * atr, 5)
+            tp = round(entry + 1.5 * atr, 5)
+        else:
+            atr = round(entry * 0.0025, 5)
+            sl = round(entry - 1.5 * atr, 5)
+            tp = round(entry + 2.5 * atr, 5)
 
         from .services.news_intelligence import check_ai_veto, evaluate_macro_sentiment
 
@@ -433,17 +439,22 @@ class MockForexDataProvider:
             "timestamp": "2024-01-02T00:00:00Z",
             "indicators": {
                 "rsi": 42.5,
+                "rsi7": 46.8 if is_scalping else 42.5,
+                "ema5": round(entry * 1.0004, 5) if is_scalping else round(entry * 1.0008, 5),
+                "ema13": round(entry * 1.0002, 5) if is_scalping else round(entry * 1.0003, 5),
                 "ema9": round(entry * 1.0008, 5),
                 "ema21": round(entry * 1.0003, 5),
                 "ema50": round(entry * 0.9995, 5),
                 "macd": {"macd": 0.0012, "signal": 0.0008, "hist": 0.0004},
                 "atr": atr,
+                "atr5": atr if is_scalping else round(entry * 0.0012, 5),
                 "entry": entry,
                 "sl": sl,
                 "tp": tp,
                 "macro_sentiment": macro_eval,
                 "veto_active": veto_active,
                 "veto_reason": veto_reason,
+                "trading_mode": "scalping" if is_scalping else "swing",
             },
             "signal": "BUY",
             "strength": 75,
@@ -453,6 +464,7 @@ class MockForexDataProvider:
             "macro_sentiment": macro_eval,
             "veto_active": veto_active,
             "veto_reason": veto_reason,
+            "trading_mode": "scalping" if is_scalping else "swing",
             "data_mode": "simulation",
             "provider": "deterministic_fixture",
         }
@@ -503,28 +515,67 @@ class LiveMarketScanner:
             import yfinance as yf
 
             ticker = yf.Ticker(ticker_symbol)
-            df = ticker.history(period="5d", interval="1h")
-            if df is None or df.empty or len(df) < 14:
+            is_scalping = str(timeframe).strip().upper() in {"1M", "5M", "M1", "M5"}
+            yf_interval = "5m" if is_scalping else "1h"
+            period = "2d" if is_scalping else "5d"
+            df = ticker.history(period=period, interval=yf_interval)
+            min_candles = 8 if is_scalping else 14
+            if df is None or df.empty or len(df) < min_candles:
                 raise ValueError("Insufficient candle history returned from market data feed")
 
             close = df["Close"]
             high = df["High"]
             low = df["Low"]
 
-            # 1. RSI (14)
-            delta = close.diff()
-            gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-            loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-            rs = gain / (loss.replace(0, 0.00001))
-            rsi_series = 100 - (100 / (1 + rs))
-            latest_rsi = float(rsi_series.iloc[-1])
+            # Scalping (M1/M5) vs Swing (1H/4H) indicators
+            if is_scalping:
+                ema5 = float(close.ewm(span=5, adjust=False).mean().iloc[-1])
+                ema13 = float(close.ewm(span=13, adjust=False).mean().iloc[-1])
+                ema9 = ema5
+                ema21 = ema13
+                ema50 = (
+                    float(close.ewm(span=50, adjust=False).mean().iloc[-1]) if len(df) >= 50 else float(close.mean())
+                )
 
-            # 2. EMA (9, 21, 50)
-            ema9 = float(close.ewm(span=9, adjust=False).mean().iloc[-1])
-            ema21 = float(close.ewm(span=21, adjust=False).mean().iloc[-1])
-            ema50 = float(close.ewm(span=50, adjust=False).mean().iloc[-1]) if len(df) >= 50 else float(close.mean())
+                delta = close.diff()
+                gain = (delta.where(delta > 0, 0)).rolling(window=7).mean()
+                loss = (-delta.where(delta < 0, 0)).rolling(window=7).mean()
+                rs = gain / (loss.replace(0, 0.00001))
+                latest_rsi = float((100 - (100 / (1 + rs))).iloc[-1])
 
-            # 3. MACD (12, 26, 9)
+                prev_close = close.shift(1)
+                tr1 = high - low
+                tr2 = (high - prev_close).abs()
+                tr3 = (low - prev_close).abs()
+                tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+                atr_val = float(tr.rolling(window=5).mean().iloc[-1])
+            else:
+                ema5 = float(close.ewm(span=5, adjust=False).mean().iloc[-1]) if len(df) >= 5 else float(close.iloc[-1])
+                ema13 = (
+                    float(close.ewm(span=13, adjust=False).mean().iloc[-1]) if len(df) >= 13 else float(close.iloc[-1])
+                )
+                ema9 = float(close.ewm(span=9, adjust=False).mean().iloc[-1])
+                ema21 = float(close.ewm(span=21, adjust=False).mean().iloc[-1])
+                ema50 = (
+                    float(close.ewm(span=50, adjust=False).mean().iloc[-1]) if len(df) >= 50 else float(close.mean())
+                )
+
+                delta = close.diff()
+                gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+                loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+                rs = gain / (loss.replace(0, 0.00001))
+                latest_rsi = float((100 - (100 / (1 + rs))).iloc[-1])
+
+                prev_close = close.shift(1)
+                tr1 = high - low
+                tr2 = (high - prev_close).abs()
+                tr3 = (low - prev_close).abs()
+                tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+                atr_val = float(tr.rolling(window=14).mean().iloc[-1])
+
+            latest_close = float(close.iloc[-1])
+
+            # MACD (12, 26, 9)
             ema12 = close.ewm(span=12, adjust=False).mean()
             ema26 = close.ewm(span=26, adjust=False).mean()
             macd_line = ema12 - ema26
@@ -535,16 +586,6 @@ class LiveMarketScanner:
                 "signal": float(signal_line.iloc[-1]),
                 "hist": float(macd_hist.iloc[-1]),
             }
-
-            # 4. ATR (14)
-            prev_close = close.shift(1)
-            tr1 = high - low
-            tr2 = (high - prev_close).abs()
-            tr3 = (low - prev_close).abs()
-            tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
-            atr_val = float(tr.rolling(window=14).mean().iloc[-1])
-
-            latest_close = float(close.iloc[-1])
 
             # 5. Multi-Timeframe Confluence (M15 + H1 + H4)
             # H4 Trend via 4-hour resampled candles
@@ -636,8 +677,14 @@ class LiveMarketScanner:
             decimals = (
                 2 if symbol_clean == "XAUUSD" else (3 if "JPY" in symbol_clean else (4 if "ZAR" in symbol_clean else 5))
             )
-            sl_dist = 1.5 * atr_val
-            tp_dist = 2.5 * atr_val
+            # Tight Scalping vs Swing SL/TP scaling
+            if is_scalping:
+                sl_dist = 1.0 * atr_val
+                tp_dist = 1.5 * atr_val
+            else:
+                sl_dist = 1.5 * atr_val
+                tp_dist = 2.5 * atr_val
+
             if direction == "BUY":
                 sl = round(latest_close - sl_dist, decimals)
                 tp = round(latest_close + tp_dist, decimals)
@@ -668,11 +715,15 @@ class LiveMarketScanner:
                 "take_profit": tp,
                 "indicators": {
                     "rsi": round(latest_rsi, 2),
+                    "rsi7": round(latest_rsi, 2) if is_scalping else None,
+                    "ema5": round(ema5, decimals),
+                    "ema13": round(ema13, decimals),
                     "ema9": round(ema9, decimals),
                     "ema21": round(ema21, decimals),
                     "ema50": round(ema50, decimals),
                     "macd": latest_macd,
                     "atr": round(atr_val, decimals),
+                    "atr5": round(atr_val, decimals) if is_scalping else None,
                     "entry": round(latest_close, decimals),
                     "sl": sl,
                     "tp": tp,
@@ -681,10 +732,12 @@ class LiveMarketScanner:
                     "macro_sentiment": macro_eval,
                     "veto_active": veto_active,
                     "veto_reason": veto_reason,
+                    "trading_mode": "scalping" if is_scalping else "swing",
                 },
                 "macro_sentiment": macro_eval,
                 "veto_active": veto_active,
                 "veto_reason": veto_reason,
+                "trading_mode": "scalping" if is_scalping else "swing",
                 "timeframe": timeframe,
                 "timestamp": now.isoformat(),
                 "data_mode": "live",
@@ -704,13 +757,36 @@ class LiveMarketScanner:
             decimals = (
                 2 if symbol_clean == "XAUUSD" else (3 if "JPY" in symbol_clean else (4 if "ZAR" in symbol_clean else 5))
             )
-            atr_val = round(fallback_price * 0.003, decimals)
-            sl = round(fallback_price - (1.5 * atr_val), decimals)
-            tp = round(fallback_price + (2.5 * atr_val), decimals)
 
             dir_pref = str(direction_preference or "BOTH").strip().upper()
             fallback_dir = "SELL" if dir_pref == "SELL" else "BUY"
             fallback_trend = "BEAR" if fallback_dir == "SELL" else "BULL"
+
+            if is_scalping:
+                atr_val = round(fallback_price * 0.0008, decimals)
+                sl = (
+                    round(fallback_price - (1.0 * atr_val), decimals)
+                    if fallback_dir == "BUY"
+                    else round(fallback_price + (1.0 * atr_val), decimals)
+                )
+                tp = (
+                    round(fallback_price + (1.5 * atr_val), decimals)
+                    if fallback_dir == "BUY"
+                    else round(fallback_price - (1.5 * atr_val), decimals)
+                )
+            else:
+                atr_val = round(fallback_price * 0.003, decimals)
+                sl = (
+                    round(fallback_price - (1.5 * atr_val), decimals)
+                    if fallback_dir == "BUY"
+                    else round(fallback_price + (1.5 * atr_val), decimals)
+                )
+                tp = (
+                    round(fallback_price + (2.5 * atr_val), decimals)
+                    if fallback_dir == "BUY"
+                    else round(fallback_price - (2.5 * atr_val), decimals)
+                )
+
             mtf_confluence = {
                 "M15": fallback_trend,
                 "H1": fallback_trend,
@@ -742,6 +818,10 @@ class LiveMarketScanner:
                 "take_profit": tp,
                 "indicators": {
                     "rsi": 45.2,
+                    "rsi7": 48.0 if is_scalping else None,
+                    "ema5": round(fallback_price * 1.0002, decimals) if is_scalping else None,
+                    "ema13": round(fallback_price * 1.0001, decimals) if is_scalping else None,
+                    "atr5": atr_val if is_scalping else None,
                     "ema9": round(fallback_price * 1.0005, decimals),
                     "ema21": round(fallback_price * 1.0002, decimals),
                     "ema50": round(fallback_price * 0.9990, decimals),
@@ -755,10 +835,12 @@ class LiveMarketScanner:
                     "macro_sentiment": macro_eval,
                     "veto_active": veto_active,
                     "veto_reason": veto_reason,
+                    "trading_mode": "scalping" if is_scalping else "swing",
                 },
                 "macro_sentiment": macro_eval,
                 "veto_active": veto_active,
                 "veto_reason": veto_reason,
+                "trading_mode": "scalping" if is_scalping else "swing",
                 "timeframe": timeframe,
                 "timestamp": now.isoformat(),
                 "data_mode": "live_fallback",
