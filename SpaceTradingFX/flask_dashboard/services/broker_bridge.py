@@ -752,6 +752,25 @@ def verify_and_connect(
     }
 
 
+def resolve_metaapi_client_base_url() -> str:
+    """Resolve the MetaApi client API base URL without duplicated domain suffixes.
+
+    Prioritizes explicit host/URL configurations, region variables, and defaults
+    to the active regional endpoint (e.g. london) on 'agiliumtrade.ai'.
+    """
+    custom_url = os.environ.get("METAAPI_CLIENT_URL") or os.environ.get("METAAPI_CLIENT_HOST")
+    if custom_url:
+        clean = custom_url.strip()
+        if not clean.startswith("http://") and not clean.startswith("https://"):
+            clean = f"https://{clean}"
+        # Correct any duplicated domain suffixes
+        clean = clean.replace("agiliumtrade.agiliumtrade.ai", "agiliumtrade.ai")
+        return clean.rstrip("/")
+
+    region = (os.environ.get("METAAPI_REGION") or "london").strip().lower()
+    return f"https://mt-client-api-v1.{region}.agiliumtrade.ai"
+
+
 _test_ticket_counter = 1000
 
 
@@ -955,8 +974,11 @@ def execute_robot_trade(
         try:
             import requests
 
+            client_base_url = resolve_metaapi_client_base_url()
+            trade_url = f"{client_base_url}/users/current/accounts/{metaapi_account_id}/trade"
+
             resp = requests.post(
-                f"https://mt-client-api-v1.agiliumtrade.agiliumtrade.ai/users/current/accounts/{metaapi_account_id}/trade",
+                trade_url,
                 headers={"auth-token": metaapi_token},
                 json={
                     "actionType": "ORDER_TYPE_BUY" if direction == "BUY" else "ORDER_TYPE_SELL",

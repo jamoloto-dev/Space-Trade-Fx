@@ -564,3 +564,78 @@ def test_autonomous_scanner_cycle(app):
         report = run_autonomous_cycle(app, force_scan=True)
         assert "timestamp" in report
         assert "users_processed" in report
+
+
+def test_resolve_metaapi_client_base_url_removes_duplicate_suffix(monkeypatch):
+    from flask_dashboard.services.broker_bridge import resolve_metaapi_client_base_url
+
+    # 1. Custom URL with duplicated agiliumtrade.agiliumtrade.ai
+    monkeypatch.setenv("METAAPI_CLIENT_HOST", "mt-client-api-v1.agiliumtrade.agiliumtrade.ai")
+    url = resolve_metaapi_client_base_url()
+    assert url == "https://mt-client-api-v1.agiliumtrade.ai"
+    assert "agiliumtrade.agiliumtrade.ai" not in url
+
+    # 2. Configured region
+    monkeypatch.delenv("METAAPI_CLIENT_HOST", raising=False)
+    monkeypatch.setenv("METAAPI_REGION", "london")
+    assert resolve_metaapi_client_base_url() == "https://mt-client-api-v1.london.agiliumtrade.ai"
+
+    monkeypatch.setenv("METAAPI_REGION", "vint-hill")
+    assert resolve_metaapi_client_base_url() == "https://mt-client-api-v1.vint-hill.agiliumtrade.ai"
+
+
+def test_metaapi_cloud_trade_dispatch_uses_clean_url(app, monkeypatch):
+    from unittest.mock import MagicMock, patch
+
+    monkeypatch.setenv("METAAPI_TOKEN", "mock_metaapi_token_123")
+    monkeypatch.setenv("METAAPI_ACCOUNT_ID", "mock_acc_999")
+    monkeypatch.setenv("METAAPI_REGION", "london")
+
+    with app.app_context():
+        user = User(id="metaapi-test-trader", email="metaapi@example.com")
+        user.set_password("MetaPass123!")
+        db.session.add(user)
+        db.session.commit()
+        create_user_license(user.id, "professional")
+
+        account = BrokerAccount(
+            user_id=user.id,
+            platform="MT5",
+            server="IFXBrokers-Real",
+            account_login="1861949",
+            encrypted_password=encrypt_broker_password("Pass123"),
+            is_connected=True,
+        )
+        db.session.add(account)
+        db.session.commit()
+
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "orderId": "metaapi-ticket-777",
+            "openPrice": 1.08500,
+        }
+
+        with patch("requests.post", return_value=mock_resp) as mock_post:
+            result = execute_robot_trade(
+                user_id=user.id,
+                symbol="EURUSD",
+                order_type="BUY",
+                volume=Decimal("0.01"),
+                sl=Decimal("1.07500"),
+                tp=Decimal("1.09500"),
+                current_price=Decimal("1.08500"),
+            )
+
+            assert result["success"] is True
+            assert result["ticket"] == "metaapi-ticket-777"
+            assert result["mode"] == "metaapi_cloud"
+
+            # Verify the URL posted to has no duplicated domain suffix
+            mock_post.assert_called_once()
+            called_url = mock_post.call_args[0][0]
+            assert (
+                called_url
+                == "https://mt-client-api-v1.london.agiliumtrade.ai/users/current/accounts/mock_acc_999/trade"
+            )
+            assert "agiliumtrade.agiliumtrade.ai" not in called_url
