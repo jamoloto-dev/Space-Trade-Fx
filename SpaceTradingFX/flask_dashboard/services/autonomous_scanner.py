@@ -167,11 +167,11 @@ def run_autonomous_cycle(app: Flask, force_scan: bool = False) -> dict[str, Any]
                         report["auto_orders_executed"] += max(0, after_count - before_count)
 
                 except Exception as user_exc:
-                    logger.warning("Autonomous worker cycle failed for user %s: %s", user_id, user_exc)
+                    logger.warning("Autonomous worker cycle failed for user {}: {}", user_id, user_exc)
                     db.session.rollback()
 
         except Exception as cycle_exc:
-            logger.error("Error in autonomous worker cycle: %s", cycle_exc)
+            logger.error("Error in autonomous worker cycle: {}", cycle_exc)
             db.session.rollback()
 
     return report
