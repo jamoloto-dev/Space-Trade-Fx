@@ -216,6 +216,14 @@ class MacroNewsEngine:
         currencies = PAIR_CURRENCY_MAP.get(symbol_clean, {symbol_clean})
         headlines: list[dict[str, Any]] = []
 
+        try:
+            from flask import current_app
+
+            if current_app and current_app.config.get("TESTING"):
+                return []
+        except Exception:
+            pass
+
         query = "+OR+".join(list(currencies)[:3])
         url = f"https://news.google.com/rss/search?q=forex+{query}&hl=en-US&gl=US&ceid=US:en"
 

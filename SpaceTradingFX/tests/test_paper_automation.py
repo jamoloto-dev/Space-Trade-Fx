@@ -33,6 +33,16 @@ class FixedProvider:
             "signal": self.signal,
             "strength": 70,
             "indicators": {},
+            "macro_sentiment": {
+                "headline": "Deterministic test fixture neutral macro",
+                "source": "TestFixture",
+                "impact": "LOW",
+                "score": 0.0,
+                "direction": "NEUTRAL",
+                "confidence_modifier": 0,
+                "veto_active": False,
+                "veto_reason": None,
+            },
         }
 
 
