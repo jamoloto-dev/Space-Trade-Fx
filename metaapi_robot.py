@@ -161,6 +161,39 @@ async def fetch_account_information(connection) -> dict[str, Any]:
     return info
 
 
+async def resolve_tradable_symbol(connection, symbol: str) -> str:
+    """Resolve symbol to broker-specific tradable symbol if base symbol is disabled (e.g. EURUSD -> EURUSD.ifx)."""
+    try:
+        spec = await connection.get_symbol_specification(symbol)
+        if spec and spec.get("tradeMode") in {
+            "SYMBOL_TRADE_MODE_FULL",
+            "SYMBOL_TRADE_MODE_LONGONLY",
+            "SYMBOL_TRADE_MODE_SHORTONLY",
+        }:
+            return symbol
+    except Exception:
+        pass
+
+    for suffix in [".ifx", "m", ".c", "pro", "+", ".r"]:
+        cand = f"{symbol}{suffix}"
+        try:
+            cand_spec = await connection.get_symbol_specification(cand)
+            if cand_spec and cand_spec.get("tradeMode") in {
+                "SYMBOL_TRADE_MODE_FULL",
+                "SYMBOL_TRADE_MODE_LONGONLY",
+                "SYMBOL_TRADE_MODE_SHORTONLY",
+            }:
+                logger.info(
+                    "Broker symbol auto-resolved: '%s' is disabled, using active tradable symbol '%s'",
+                    symbol,
+                    cand,
+                )
+                return cand
+        except Exception:
+            continue
+    return symbol
+
+
 async def execute_market_order(
     connection,
     symbol: str,
@@ -174,11 +207,14 @@ async def execute_market_order(
     if action_clean not in {"BUY", "SELL"}:
         raise ValueError(f"Invalid order action: {action}. Expected 'BUY' or 'SELL'.")
 
+    # Auto-resolve symbol if broker requires suffix (e.g. IFXBrokers uses .ifx)
+    actual_symbol = await resolve_tradable_symbol(connection, symbol)
+
     logger.info(
         "Submitting %s market order: %s lots of %s (SL: %s, TP: %s)...",
         action_clean,
         volume,
-        symbol,
+        actual_symbol,
         stop_loss if stop_loss is not None else "None",
         take_profit if take_profit is not None else "None",
     )
@@ -186,14 +222,14 @@ async def execute_market_order(
     try:
         if action_clean == "BUY":
             res = await connection.create_market_buy_order(
-                symbol=symbol,
+                symbol=actual_symbol,
                 volume=volume,
                 stop_loss=stop_loss,
                 take_profit=take_profit,
             )
         else:
             res = await connection.create_market_sell_order(
-                symbol=symbol,
+                symbol=actual_symbol,
                 volume=volume,
                 stop_loss=stop_loss,
                 take_profit=take_profit,

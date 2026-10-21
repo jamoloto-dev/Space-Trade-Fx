@@ -978,12 +978,16 @@ def execute_robot_trade(
             client_base_url = resolve_metaapi_client_base_url()
             trade_url = f"{client_base_url}/users/current/accounts/{metaapi_account_id}/trade"
 
+            trade_symbol = symbol
+            if is_ifx_server(account.server) and not trade_symbol.endswith(".ifx"):
+                trade_symbol = f"{trade_symbol}.ifx"
+
             resp = requests.post(
                 trade_url,
                 headers={"auth-token": metaapi_token},
                 json={
                     "actionType": "ORDER_TYPE_BUY" if direction == "BUY" else "ORDER_TYPE_SELL",
-                    "symbol": symbol,
+                    "symbol": trade_symbol,
                     "volume": float(lots),
                     "stopLoss": float(sl_dec) if sl_dec is not None else None,
                     "takeProfit": float(tp_dec) if tp_dec is not None else None,
