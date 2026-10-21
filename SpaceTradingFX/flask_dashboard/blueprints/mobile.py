@@ -21,7 +21,7 @@ DEFAULT_LOT_SIZES = {symbol: DEFAULT_LOT_SIZE for symbol in SUPPORTED_SYMBOLS}
 def home():
     """Mobile Home Screen - Broker Connection and Robot Status"""
     from ..license_manager import check_license_valid
-    from ..models import BrokerAccount, TradingPreference, TradingSignal
+    from ..models import BrokerAccount, TradingPreference
     from ..trading_engine import TradingEngine
 
     is_valid, license_info = check_license_valid(current_user.id)
@@ -29,7 +29,6 @@ def home():
     account_summary = engine.get_account_summary()
     preferences = TradingPreference.query.filter_by(user_id=current_user.id).first()
     broker_account = BrokerAccount.query.filter_by(user_id=current_user.id).first()
-    latest_signals = TradingSignal.query.order_by(TradingSignal.created_at.desc()).limit(6).all()
 
     return render_template(
         "mobile_home.html",
@@ -39,7 +38,6 @@ def home():
         account_summary=account_summary,
         preferences=preferences,
         broker_account=broker_account,
-        latest_signals=latest_signals,
         active_page="home",
     )
 
@@ -129,7 +127,7 @@ def metatrader():
 @login_required
 def history():
     """Mobile trade history page"""
-    from ..models import Trade
+    from ..models import Trade, TradingSignal
 
     filter_type = request.args.get("filter", "all")
     query = Trade.query.filter_by(user_id=current_user.id)
@@ -150,6 +148,7 @@ def history():
     total_profit = sum(t.profit_loss for t in closed_trades)
     winning_trades = len([t for t in closed_trades if t.profit_loss >= 0])
     win_rate = (winning_trades / total_trades * 100) if total_trades > 0 else 0
+    latest_signals = TradingSignal.query.order_by(TradingSignal.created_at.desc()).limit(6).all()
 
     return render_template(
         "mobile_history.html",
@@ -158,6 +157,7 @@ def history():
         total_trades=total_trades,
         total_profit=total_profit,
         win_rate=round(win_rate, 1),
+        latest_signals=latest_signals,
         active_page="history",
     )
 

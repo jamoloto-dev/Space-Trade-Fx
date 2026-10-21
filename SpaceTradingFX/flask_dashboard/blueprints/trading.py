@@ -162,7 +162,7 @@ def analyze_markets():
     signals = engine.analyze_markets()
 
     flash(f"Analyzed {len(signals)} currency pairs with live RSI, EMA, MACD & ATR signals", "success")
-    return redirect(url_for("mobile.home"))
+    return redirect(url_for("mobile.history"))
 
 
 @trading_bp.route("/manual-trade", methods=["POST"])

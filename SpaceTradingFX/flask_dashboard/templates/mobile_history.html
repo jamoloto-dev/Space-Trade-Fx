@@ -22,6 +22,70 @@
     </div>
 </div>
 
+<!-- Market Analysis Signals Section -->
+{% if latest_signals %}
+<div style="margin-top: 15px; margin-bottom: 25px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; padding: 0 4px;">
+        <h3 style="font-size: 13px; font-weight: 700; letter-spacing: 1px; color: rgba(255,255,255,0.85); text-transform: uppercase;">
+            <i class="fas fa-chart-line" style="color: #4CAF50; margin-right: 6px;"></i> LIVE MARKET OPPORTUNITIES
+        </h3>
+        <span style="font-size: 11px; color: #4CAF50; font-weight: 600; background: rgba(76,175,80,0.15); padding: 2px 8px; border-radius: 10px;">
+            {{ latest_signals|length }} Signals
+        </span>
+    </div>
+    {% for sig in latest_signals %}
+    <div class="symbol-card" style="margin-bottom: 12px; padding: 14px 16px; border-left: 4px solid {% if sig.signal_type == 'BUY' %}#4CAF50{% else %}#F44336{% endif %};">
+        <div class="symbol-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <span class="symbol-name" style="font-size: 17px; font-weight: 800;">{{ sig.currency_pair }}</span>
+                <span class="trade-side {% if sig.signal_type == 'BUY' %}trade-side--buy{% else %}trade-side--sell{% endif %}">
+                    {{ sig.signal_type }}
+                </span>
+            </div>
+            <div style="font-size: 12px; font-weight: 700; color: #F59E0B;">
+                {{ "%.0f"|format(sig.strength) }}% Confidence
+            </div>
+        </div>
+        
+        <div class="details" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 10px; text-align: center; background: rgba(0,0,0,0.2); padding: 8px; border-radius: 8px;">
+            <div>
+                <div class="detail-label" style="font-size: 10px; color: rgba(255,255,255,0.6);">LIVE ENTRY</div>
+                <div class="detail-value" style="font-size: 13px; font-weight: 700; color: #FFFFFF;">
+                    {{ "%.5f"|format(sig.price) }}
+                </div>
+            </div>
+            <div>
+                <div class="detail-label" style="font-size: 10px; color: rgba(255,255,255,0.6);">STOP LOSS</div>
+                <div class="detail-value" style="font-size: 13px; font-weight: 700; color: #F44336;">
+                    {{ "%.5f"|format(sig.indicators.get('sl', 0)) if sig.indicators and sig.indicators.get('sl') else '-' }}
+                </div>
+            </div>
+            <div>
+                <div class="detail-label" style="font-size: 10px; color: rgba(255,255,255,0.6);">TAKE PROFIT</div>
+                <div class="detail-value" style="font-size: 13px; font-weight: 700; color: #4CAF50;">
+                    {{ "%.5f"|format(sig.indicators.get('tp', 0)) if sig.indicators and sig.indicators.get('tp') else '-' }}
+                </div>
+            </div>
+        </div>
+
+        {% if sig.indicators %}
+        <div style="display: flex; gap: 6px; flex-wrap: wrap; font-size: 10px; color: rgba(255,255,255,0.7);">
+            {% if sig.indicators.get('rsi') %}
+            <span style="background: rgba(255,255,255,0.1); padding: 2px 6px; border-radius: 4px;">RSI: {{ sig.indicators.get('rsi') }}</span>
+            {% endif %}
+            {% if sig.indicators.get('ema9') %}
+            <span style="background: rgba(255,255,255,0.1); padding: 2px 6px; border-radius: 4px;">EMA9: {{ sig.indicators.get('ema9') }}</span>
+            {% endif %}
+            {% if sig.indicators.get('atr') %}
+            <span style="background: rgba(255,255,255,0.1); padding: 2px 6px; border-radius: 4px;">ATR: {{ sig.indicators.get('atr') }}</span>
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
 <!-- Filter Tabs -->
 <div class="filter-tabs">
     <button class="filter-tab {% if filter == 'all' %}active{% endif %}" onclick="filterTrades('all')">ALL</button>
