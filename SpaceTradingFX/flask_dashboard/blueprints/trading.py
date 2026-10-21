@@ -97,7 +97,9 @@ def preferences():
             max_lot_size = Decimal(request.form.get("max_lot_size", "1.00"))
             max_total_lots = Decimal(request.form.get("max_total_lots", "3.00"))
             max_daily_loss = Decimal(request.form.get("max_daily_loss", "250.00"))
-            account_equity = Decimal(request.form.get("account_equity", request.form.get("paper_account_equity", "10000.00")))
+            account_equity = Decimal(
+                request.form.get("account_equity", request.form.get("paper_account_equity", "10000.00"))
+            )
         except (InvalidOperation, ValueError):
             flash("Enter valid risk controls and trade-limit values.", "error")
             return redirect(url_for("trading.preferences"))
@@ -365,17 +367,19 @@ def api_mt5_connect():
     broker_account.last_synced_at = utcnow()
     db.session.commit()
 
-    return jsonify({
-        "success": True,
-        "message": f"Successfully connected to {server} ({platform})!",
-        "account": {
-            "platform": platform,
-            "server": server,
-            "login": login,
-            "balance": res.get("balance", 10000.0),
-            "currency": res.get("currency", "USD"),
-        },
-    }), 200
+    return jsonify(
+        {
+            "success": True,
+            "message": f"Successfully connected to {server} ({platform})!",
+            "account": {
+                "platform": platform,
+                "server": server,
+                "login": login,
+                "balance": res.get("balance", 10000.0),
+                "currency": res.get("currency", "USD"),
+            },
+        }
+    ), 200
 
 
 @trading_bp.route("/api/mt5/positions")
@@ -387,11 +391,13 @@ def api_mt5_positions():
 
     broker_account = BrokerAccount.query.filter_by(user_id=current_user.id, is_connected=True).first()
     if not broker_account:
-        return jsonify({
-            "success": False,
-            "error": "No active broker account connected. Please connect your IFX Brokers or Deriv account first.",
-            "positions": [],
-        }), 400
+        return jsonify(
+            {
+                "success": False,
+                "error": "No active broker account connected. Please connect your IFX Brokers or Deriv account first.",
+                "positions": [],
+            }
+        ), 400
 
     open_trades = Trade.query.filter_by(user_id=current_user.id, status="open").all()
     positions = [
@@ -408,13 +414,15 @@ def api_mt5_positions():
         }
         for t in open_trades
     ]
-    return jsonify({
-        "success": True,
-        "server": broker_account.server,
-        "platform": broker_account.platform,
-        "login": broker_account.account_login,
-        "positions": positions,
-    }), 200
+    return jsonify(
+        {
+            "success": True,
+            "server": broker_account.server,
+            "platform": broker_account.platform,
+            "login": broker_account.account_login,
+            "positions": positions,
+        }
+    ), 200
 
 
 @trading_bp.route("/api/mt5/trade", methods=["POST"])
@@ -427,10 +435,12 @@ def api_mt5_trade():
 
     broker_account = BrokerAccount.query.filter_by(user_id=current_user.id, is_connected=True).first()
     if not broker_account:
-        return jsonify({
-            "success": False,
-            "error": "Execution halted: No broker account connected. Please connect your IFX Brokers or Deriv account first.",
-        }), 400
+        return jsonify(
+            {
+                "success": False,
+                "error": "Execution halted: No broker account connected. Please connect your IFX Brokers or Deriv account first.",
+            }
+        ), 400
 
     data = request.get_json(silent=True) or request.form
     symbol = str(data.get("symbol", "EURUSD")).strip()
@@ -494,10 +504,12 @@ def api_broker_execute_signal():
 
     broker_account = BrokerAccount.query.filter_by(user_id=current_user.id, is_connected=True).first()
     if not broker_account:
-        return jsonify({
-            "success": False,
-            "error": "Execution halted: No broker account connected. Please connect your IFX Brokers or Deriv account first.",
-        }), 400
+        return jsonify(
+            {
+                "success": False,
+                "error": "Execution halted: No broker account connected. Please connect your IFX Brokers or Deriv account first.",
+            }
+        ), 400
 
     data = request.get_json(silent=True) or request.form
     symbol = str(data.get("symbol") or "EURUSD").strip()
@@ -536,17 +548,19 @@ def api_broker_execute_signal():
         db.session.add(trade)
         db.session.commit()
 
-        return jsonify({
-            "success": True,
-            "ticket": result.get("ticket"),
-            "server": result.get("server"),
-            "symbol": symbol,
-            "order_type": order_type,
-            "volume": result.get("volume"),
-            "fill_price": result.get("fill_price"),
-            "message": f"Real order executed on {result.get('server')}! Ticket #{result.get('ticket')}",
-            "trade_id": trade.id,
-        }), 200
+        return jsonify(
+            {
+                "success": True,
+                "ticket": result.get("ticket"),
+                "server": result.get("server"),
+                "symbol": symbol,
+                "order_type": order_type,
+                "volume": result.get("volume"),
+                "fill_price": result.get("fill_price"),
+                "message": f"Real order executed on {result.get('server')}! Ticket #{result.get('ticket')}",
+                "trade_id": trade.id,
+            }
+        ), 200
     except BrokerError as exc:
         return jsonify({"success": False, "error": str(exc)}), 400
     except Exception as exc:

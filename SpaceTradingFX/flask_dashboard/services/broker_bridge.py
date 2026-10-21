@@ -490,9 +490,7 @@ def verify_deriv_account(
         )
 
     if not login.isdigit():
-        raise BrokerValidationError(
-            f"Invalid Deriv account login ID '{login}'. Account login must be numeric."
-        )
+        raise BrokerValidationError(f"Invalid Deriv account login ID '{login}'. Account login must be numeric.")
 
     if len(password) < 4:
         raise BrokerValidationError("Deriv broker password must be at least 4 characters.")
@@ -542,14 +540,10 @@ def verify_ifx_account(
     login, and password without crashing on mt5.initialize().
     """
     if platform not in {"MT4", "MT5"}:
-        raise BrokerValidationError(
-            f"Unsupported platform '{platform}' for IFX Brokers. Must be 'MT4' or 'MT5'."
-        )
+        raise BrokerValidationError(f"Unsupported platform '{platform}' for IFX Brokers. Must be 'MT4' or 'MT5'.")
 
     if not login.isdigit():
-        raise BrokerValidationError(
-            f"Invalid IFX Brokers account login ID '{login}'. Account login must be numeric."
-        )
+        raise BrokerValidationError(f"Invalid IFX Brokers account login ID '{login}'. Account login must be numeric.")
 
     if len(password) < 4:
         raise BrokerValidationError("IFX Brokers broker password must be at least 4 characters.")
@@ -885,7 +879,9 @@ def execute_robot_trade(
             if resp.status_code == 200:
                 payload = resp.json()
                 real_ticket = str(payload.get("ticket") or payload.get("order_id") or payload.get("order"))
-                fill_price = float(payload.get("price") or payload.get("fill_price") or (price_dec if price_dec is not None else 0.0))
+                fill_price = float(
+                    payload.get("price") or payload.get("fill_price") or (price_dec if price_dec is not None else 0.0)
+                )
                 account.last_synced_at = utcnow()
                 db.session.commit()
                 return {

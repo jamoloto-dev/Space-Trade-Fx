@@ -154,7 +154,12 @@ class TradingEngine:
                 # Institutional duplicate-position protection: never open a second trade on a symbol with an active open position
                 existing_open = Trade.query.filter_by(user_id=self.user_id, currency_pair=symbol, status="open").first()
 
-                if submit_automatically and (allowed in {"BOTH", direction}) and (strength_val >= 65.0) and (existing_open is None):
+                if (
+                    submit_automatically
+                    and (allowed in {"BOTH", direction})
+                    and (strength_val >= 65.0)
+                    and (existing_open is None)
+                ):
                     key = f"auto:{symbol}:{self.preferences.timeframe}:{quote_time}:{direction}"
                     try:
                         self.execute_trade(
@@ -167,7 +172,9 @@ class TradingEngine:
                     except Exception as exc:
                         logger.info("Automated broker trade not executed for %s: %s", symbol, exc)
                 elif submit_automatically and existing_open is not None:
-                    logger.info("Auto-pilot duplicate protection: active position exists for %s, skipping auto-trade", symbol)
+                    logger.info(
+                        "Auto-pilot duplicate protection: active position exists for %s, skipping auto-trade", symbol
+                    )
 
             except Exception as exc:
                 logger.warning("Error scanning market symbol %s: %s", symbol, exc)
@@ -182,7 +189,9 @@ class TradingEngine:
             return 0
         broker_acct = BrokerAccount.query.filter_by(user_id=self.user_id, is_connected=True).first()
         if not broker_acct:
-            logger.warning("Automated execution halted for user %s: No active IFX Brokers or Deriv account connected", self.user_id)
+            logger.warning(
+                "Automated execution halted for user %s: No active IFX Brokers or Deriv account connected", self.user_id
+            )
             return 0
         before = Trade.query.filter_by(user_id=self.user_id).count()
         self.analyze_markets(submit_automatically=True)

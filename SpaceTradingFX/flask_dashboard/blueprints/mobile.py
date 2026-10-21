@@ -97,6 +97,7 @@ def quotes():
     direction_prefs = preferences.direction_preferences if preferences.direction_preferences else {}
 
     from ..models import BrokerAccount
+
     broker_acct = BrokerAccount.query.filter_by(user_id=current_user.id, is_connected=True).first()
     active_platform = broker_acct.platform if broker_acct else "MT5"
 
@@ -286,7 +287,9 @@ def connect_broker():
             flash(f"Broker Validation Error: {exc}", "error")
             return render_template("mobile_connect_broker.html", broker_account=broker_account, active_page="profile")
         except BrokerConnectionError as exc:
-            current_app.logger.warning("Broker authentication rejected for user %s on %s: %s", current_user.id, server, exc)
+            current_app.logger.warning(
+                "Broker authentication rejected for user %s on %s: %s", current_user.id, server, exc
+            )
             flash(f"Broker Authentication Failed: {exc}", "error")
             return render_template("mobile_connect_broker.html", broker_account=broker_account, active_page="profile")
         except Exception as exc:

@@ -58,7 +58,11 @@ def run_autonomous_cycle(app: Flask, force_scan: bool = False) -> dict[str, Any]
                     strategy = prefs.strategy_settings or {} if prefs else {}
                     auto_pilot_enabled = bool(
                         prefs
-                        and (prefs.trading_enabled or strategy.get("auto_pilot") or strategy.get("automated_broker_trading"))
+                        and (
+                            prefs.trading_enabled
+                            or strategy.get("auto_pilot")
+                            or strategy.get("automated_broker_trading")
+                        )
                     )
 
                     if force_scan or auto_pilot_enabled:

@@ -458,11 +458,7 @@ class LiveMarketScanner:
             # 2. EMA (9, 21, 50)
             ema9 = float(close.ewm(span=9, adjust=False).mean().iloc[-1])
             ema21 = float(close.ewm(span=21, adjust=False).mean().iloc[-1])
-            ema50 = (
-                float(close.ewm(span=50, adjust=False).mean().iloc[-1])
-                if len(df) >= 50
-                else float(close.mean())
-            )
+            ema50 = float(close.ewm(span=50, adjust=False).mean().iloc[-1]) if len(df) >= 50 else float(close.mean())
 
             # 3. MACD (12, 26, 9)
             ema12 = close.ewm(span=12, adjust=False).mean()
@@ -516,7 +512,9 @@ class LiveMarketScanner:
             direction = "BUY" if buy_score >= sell_score else "SELL"
             strength = max(buy_score, sell_score)
 
-            decimals = 2 if symbol_clean == "XAUUSD" else (3 if "JPY" in symbol_clean else (4 if "ZAR" in symbol_clean else 5))
+            decimals = (
+                2 if symbol_clean == "XAUUSD" else (3 if "JPY" in symbol_clean else (4 if "ZAR" in symbol_clean else 5))
+            )
             sl_dist = 1.5 * atr_val
             tp_dist = 2.5 * atr_val
             if direction == "BUY":
@@ -554,9 +552,16 @@ class LiveMarketScanner:
             return res
 
         except Exception as exc:
-            logger.warning("Live data feed failed for %s (%s), generating institutional model quote: %s", symbol_clean, ticker_symbol, exc)
+            logger.warning(
+                "Live data feed failed for %s (%s), generating institutional model quote: %s",
+                symbol_clean,
+                ticker_symbol,
+                exc,
+            )
             fallback_price = self.FALLBACK_PRICES.get(symbol_clean, 1.10000)
-            decimals = 2 if symbol_clean == "XAUUSD" else (3 if "JPY" in symbol_clean else (4 if "ZAR" in symbol_clean else 5))
+            decimals = (
+                2 if symbol_clean == "XAUUSD" else (3 if "JPY" in symbol_clean else (4 if "ZAR" in symbol_clean else 5))
+            )
             atr_val = round(fallback_price * 0.003, decimals)
             sl = round(fallback_price - (1.5 * atr_val), decimals)
             tp = round(fallback_price + (2.5 * atr_val), decimals)

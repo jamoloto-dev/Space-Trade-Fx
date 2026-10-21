@@ -139,9 +139,7 @@ class Trade(db.Model):
             name="ck_trades_status",
         ),
         CheckConstraint("trade_type IN ('BUY', 'SELL')", name="ck_trades_direction"),
-        CheckConstraint(
-            "execution_mode IN ('broker', 'live', 'demo', 'paper')", name="ck_trades_execution_mode"
-        ),
+        CheckConstraint("execution_mode IN ('broker', 'live', 'demo', 'paper')", name="ck_trades_execution_mode"),
         CheckConstraint(
             "reconciliation_state IN ('pending', 'reconciled', 'exception')", name="ck_trades_reconciliation_state"
         ),
