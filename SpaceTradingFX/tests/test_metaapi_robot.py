@@ -155,3 +155,107 @@ def test_resolve_tradable_symbol_with_suffix():
 
     resolved = asyncio.run(metaapi_robot.resolve_tradable_symbol(mock_conn, "EURUSD"))
     assert resolved == "EURUSD.ifx"
+
+
+def test_calculate_position_size():
+    # Small account ($10) should safely clamp to min_volume (0.01 lots)
+    small_size = metaapi_robot.calculate_position_size(equity=10.0, risk_pct=1.5, sl_pips=25.0)
+    assert small_size == 0.01
+
+    # Large account ($10,000) risking 2% with 25 pip SL ($200 risk / (25 * 10)) -> 0.80 lots
+    large_size = metaapi_robot.calculate_position_size(equity=10000.0, risk_pct=2.0, sl_pips=25.0)
+    assert large_size == 0.80
+
+    # Zero/negative equity fallback
+    zero_size = metaapi_robot.calculate_position_size(equity=0.0)
+    assert zero_size == 0.01
+
+
+def test_check_drawdown_circuit_breaker():
+    # 2% drawdown (below 5% limit) -> False
+    tripped, pct = metaapi_robot.check_drawdown_circuit_breaker(
+        starting_balance=1000.0, current_equity=980.0, max_drawdown_pct=5.0
+    )
+    assert tripped is False
+    assert abs(pct - 2.0) < 0.01
+
+    # 6% drawdown (above 5% limit) -> True
+    tripped, pct = metaapi_robot.check_drawdown_circuit_breaker(
+        starting_balance=1000.0, current_equity=940.0, max_drawdown_pct=5.0
+    )
+    assert tripped is True
+    assert abs(pct - 6.0) < 0.01
+
+
+def test_check_risk_guardrails():
+    mock_conn = MagicMock()
+    # Mock open positions
+    mock_conn.get_positions = AsyncMock(
+        return_value=[
+            {"id": "pos-1", "symbol": "USDJPY.ifx"},
+            {"id": "pos-2", "symbol": "GBPUSD.ifx"},
+        ]
+    )
+
+    # Allowed when under max_open_trades and no duplicate symbol
+    passed, reason = asyncio.run(
+        metaapi_robot.check_risk_guardrails(
+            connection=mock_conn,
+            symbol="EURUSD.ifx",
+            lot_size=0.01,
+            max_open_trades=3,
+            free_margin=100.0,
+            required_margin=20.0,
+        )
+    )
+    assert passed is True
+    assert reason is None
+
+    # Blocked when max_open_trades reached
+    passed, reason = asyncio.run(
+        metaapi_robot.check_risk_guardrails(
+            connection=mock_conn,
+            symbol="EURUSD.ifx",
+            lot_size=0.01,
+            max_open_trades=2,
+            free_margin=100.0,
+            required_margin=20.0,
+        )
+    )
+    assert passed is False
+    assert "Exposure Cap Reached" in reason
+
+    # Blocked on duplicate symbol
+    passed, reason = asyncio.run(
+        metaapi_robot.check_risk_guardrails(
+            connection=mock_conn,
+            symbol="USDJPY.ifx",
+            lot_size=0.01,
+            max_open_trades=5,
+            free_margin=100.0,
+            required_margin=20.0,
+        )
+    )
+    assert passed is False
+    assert "Duplicate Symbol Position" in reason
+
+    # Blocked on insufficient free margin
+    passed, reason = asyncio.run(
+        metaapi_robot.check_risk_guardrails(
+            connection=mock_conn,
+            symbol="EURUSD.ifx",
+            lot_size=0.01,
+            max_open_trades=5,
+            free_margin=10.0,
+            required_margin=25.0,
+        )
+    )
+    assert passed is False
+    assert "Insufficient Free Margin" in reason
+
+
+def test_evaluate_ai_context_nonexistent_db():
+    ctx = metaapi_robot.evaluate_ai_context("EURUSD", "BUY", db_path="/tmp/nonexistent.db")
+    assert "veto" in ctx
+    assert "history" in ctx
+    assert ctx["risk_multiplier"] == 1.0

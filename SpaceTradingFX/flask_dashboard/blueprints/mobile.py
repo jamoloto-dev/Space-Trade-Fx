@@ -487,6 +487,29 @@ def connect_broker():
     return render_template("mobile_connect_broker.html", broker_account=broker_account, active_page="profile")
 
 
+@mobile_bp.route("/api/broker/telemetry")
+@login_required
+def api_broker_telemetry():
+    """Endpoint returning live broker account telemetry for dynamic UI updates."""
+    from ..services.broker_bridge import get_broker_telemetry
+
+    telemetry = get_broker_telemetry(current_user.id)
+    return jsonify(
+        {
+            "success": True,
+            "connected": telemetry.get("connected", False),
+            "currency": telemetry.get("currency", "USD"),
+            "currency_symbol": telemetry.get("currency_symbol", "$"),
+            "balance": float(telemetry.get("balance", 0.0)),
+            "equity": float(telemetry.get("equity", 0.0)),
+            "free_margin": float(telemetry.get("free_margin", 0.0)),
+            "floating_pnl": float(telemetry.get("floating_pnl", 0.0)),
+            "server": telemetry.get("server", ""),
+            "platform": telemetry.get("platform", ""),
+        }
+    )
+
+
 @mobile_bp.route("/api/broker/test-trade", methods=["POST"])
 @login_required
 def api_broker_test_trade():

@@ -14,6 +14,7 @@ import os
 import socket
 import ssl
 import sys
+import time
 import uuid
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import Any
@@ -415,6 +416,45 @@ def get_account_currency(server: str) -> tuple[str, str]:
     return ("USD", "$")
 
 
+_METAAPI_TELEMETRY_CACHE: dict[str, tuple[dict[str, Any], float]] = {}
+
+
+def fetch_metaapi_account_info(
+    account_id: str | None = None,
+    token: str | None = None,
+    cache_ttl_seconds: float = 4.0,
+) -> dict[str, Any] | None:
+    """Fetch live account telemetry from MetaApi cloud REST client API with caching."""
+    if current_app and current_app.config.get("TESTING"):
+        return None
+
+    token = token or os.environ.get("METAAPI_TOKEN")
+    account_id = account_id or os.environ.get("METAAPI_ACCOUNT_ID")
+    if not token or not account_id:
+        return None
+
+    now = time.time()
+    cache_key = f"{account_id}:{token[-8:]}" if len(token) >= 8 else str(account_id)
+    if cache_key in _METAAPI_TELEMETRY_CACHE:
+        cached_data, cached_time = _METAAPI_TELEMETRY_CACHE[cache_key]
+        if (now - cached_time) < cache_ttl_seconds:
+            return cached_data
+
+    try:
+        import requests
+
+        client_base_url = resolve_metaapi_client_base_url()
+        url = f"{client_base_url}/users/current/accounts/{account_id}/account-information"
+        resp = requests.get(url, headers={"auth-token": token}, timeout=4.0)
+        if resp.status_code == 200:
+            data = resp.json()
+            _METAAPI_TELEMETRY_CACHE[cache_key] = (data, now)
+            return data
+    except Exception as exc:
+        logger.debug("MetaApi live account query skipped/failed: {}", exc)
+    return None
+
+
 def get_broker_telemetry(user_id: str) -> dict[str, Any]:
     """Retrieve live account telemetry (Balance, Equity, Free Margin, Currency) for user."""
     from ..models import BrokerAccount, Trade
@@ -431,40 +471,59 @@ def get_broker_telemetry(user_id: str) -> dict[str, Any]:
             "floating_pnl": Decimal("0.00"),
         }
 
-    if getattr(account, "currency", None):
-        currency = str(account.currency)
+    meta_info = None
+    meta_token = os.environ.get("METAAPI_TOKEN")
+    meta_acc_id = os.environ.get("METAAPI_ACCOUNT_ID")
+    if meta_token and meta_acc_id and not (current_app and current_app.config.get("TESTING")):
+        meta_info = fetch_metaapi_account_info(meta_acc_id, meta_token)
+
+    if meta_info:
+        raw_bal = float(meta_info.get("balance", 0.0))
+        credit = float(meta_info.get("credit", 0.0))
+        # Net deposit balance (deducting credit bonus if total balance includes credit)
+        true_balance = (
+            raw_bal - credit if (credit > 0 and raw_bal > credit and (raw_bal - credit) < raw_bal) else raw_bal
+        )
+        currency = str(meta_info.get("currency", "USD")).upper()
         currency_symbol = "R" if currency == "ZAR" else "$"
+        base_balance = Decimal(f"{true_balance:.2f}")
+        equity = Decimal(f"{float(meta_info.get('equity', true_balance)):.2f}")
+        free_margin = Decimal(f"{float(meta_info.get('freeMargin', equity)):.2f}")
+        floating_pnl = equity - base_balance
     else:
-        currency, currency_symbol = get_account_currency(account.server)
+        if getattr(account, "currency", None):
+            currency = str(account.currency)
+            currency_symbol = "R" if currency == "ZAR" else "$"
+        else:
+            currency, currency_symbol = get_account_currency(account.server)
 
-    # Calculate realized P/L from closed trades
-    closed_trades = Trade.query.filter_by(user_id=user_id, status="closed").all()
-    realized_pnl = sum((t.profit_loss for t in closed_trades if t.profit_loss is not None), Decimal("0.00"))
+        # Calculate realized P/L from closed trades
+        closed_trades = Trade.query.filter_by(user_id=user_id, status="closed").all()
+        realized_pnl = sum((t.profit_loss for t in closed_trades if t.profit_loss is not None), Decimal("0.00"))
 
-    # Base balance from persisted BrokerAccount, initialized to 3000.00 ZAR for IFX / 2160203
-    acc_bal = getattr(account, "balance", None)
-    if acc_bal is not None and Decimal(str(acc_bal)) > Decimal("0.00"):
-        starting_balance = Decimal(str(acc_bal))
-    elif str(account.account_login).strip() == "2160203" or is_ifx_server(account.server):
-        starting_balance = Decimal("3000.00")
-        account.balance = starting_balance
-        account.currency = "ZAR"
-        currency = "ZAR"
-        currency_symbol = "R"
-    else:
-        starting_balance = Decimal("1000.00")
+        acc_bal = getattr(account, "balance", None)
+        if acc_bal is not None and Decimal(str(acc_bal)) > Decimal("0.00"):
+            starting_balance = Decimal(str(acc_bal))
+        elif str(account.account_login).strip() == "2160203" or is_ifx_server(account.server):
+            starting_balance = Decimal("3000.00")
+            account.balance = starting_balance
+            account.currency = "ZAR"
+            currency = "ZAR"
+            currency_symbol = "R"
+        else:
+            starting_balance = Decimal("1000.00")
 
-    base_balance = starting_balance + realized_pnl
+        base_balance = starting_balance + realized_pnl
 
-    # Calculate floating P/L from open trades
-    open_trades = Trade.query.filter_by(user_id=user_id, status="open").all()
-    floating_pnl = sum((t.profit_loss for t in open_trades if t.profit_loss is not None), Decimal("0.00"))
+        # Calculate floating P/L from open trades
+        open_trades = Trade.query.filter_by(user_id=user_id, status="open").all()
+        floating_pnl = sum((t.profit_loss for t in open_trades if t.profit_loss is not None), Decimal("0.00"))
 
-    equity = base_balance + floating_pnl
+        equity = base_balance + floating_pnl
 
-    # Approximate margin used: lot_size * 1000 per open trade
-    margin_used = sum((Decimal(str(t.lot_size or 0.01)) * Decimal("1000") for t in open_trades), Decimal("0.00"))
-    free_margin = max(Decimal("0.00"), equity - margin_used)
+        # Approximate margin used: lot_size * 1000 per open trade
+        margin_used = sum((Decimal(str(t.lot_size or 0.01)) * Decimal("1000") for t in open_trades), Decimal("0.00"))
+        free_margin = max(Decimal("0.00"), equity - margin_used)
 
     try:
         from ..extensions import db

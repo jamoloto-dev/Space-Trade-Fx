@@ -49,7 +49,7 @@
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 8px;">
             <div style="display: flex; align-items: center; gap: 8px;">
                 <span class="status-dot"></span>
-                <span style="font-size: 11px; font-weight: 700; letter-spacing: 0.5px; color: rgba(255,255,255,0.85); text-transform: uppercase;">
+                <span id="telemetry-currency-label" style="font-size: 11px; font-weight: 700; letter-spacing: 0.5px; color: rgba(255,255,255,0.85); text-transform: uppercase;">
                     LIVE TELEMETRY ({{ account_summary.currency }})
                 </span>
             </div>
@@ -60,19 +60,19 @@
         <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; text-align: center;">
             <div style="background: rgba(0,0,0,0.25); padding: 10px 4px; border-radius: 10px;">
                 <div style="font-size: 10px; color: rgba(255,255,255,0.55); font-weight: 600; text-transform: uppercase; margin-bottom: 4px;">BALANCE</div>
-                <div style="font-size: 14px; font-weight: 800; color: #FFFFFF; word-break: break-all;">
+                <div id="telemetry-balance" style="font-size: 14px; font-weight: 800; color: #FFFFFF; word-break: break-all;">
                     {{ account_summary.currency_symbol }}{{ "%.2f"|format(account_summary.balance) }}
                 </div>
             </div>
             <div style="background: rgba(0,0,0,0.25); padding: 10px 4px; border-radius: 10px; border: 1px solid rgba(76,175,80,0.3);">
                 <div style="font-size: 10px; color: #4CAF50; font-weight: 700; text-transform: uppercase; margin-bottom: 4px;">EQUITY</div>
-                <div style="font-size: 14px; font-weight: 800; color: #4CAF50; word-break: break-all;">
+                <div id="telemetry-equity" style="font-size: 14px; font-weight: 800; color: #4CAF50; word-break: break-all;">
                     {{ account_summary.currency_symbol }}{{ "%.2f"|format(account_summary.equity) }}
                 </div>
             </div>
             <div style="background: rgba(0,0,0,0.25); padding: 10px 4px; border-radius: 10px;">
                 <div style="font-size: 10px; color: rgba(255,255,255,0.55); font-weight: 600; text-transform: uppercase; margin-bottom: 4px;">FREE MARGIN</div>
-                <div style="font-size: 14px; font-weight: 800; color: #60A5FA; word-break: break-all;">
+                <div id="telemetry-free-margin" style="font-size: 14px; font-weight: 800; color: #60A5FA; word-break: break-all;">
                     {{ account_summary.currency_symbol }}{{ "%.2f"|format(account_summary.free_margin) }}
                 </div>
             </div>
@@ -294,5 +294,37 @@ function showToast(message, type) {
     toast.style.opacity = '1';
     setTimeout(() => { toast.style.opacity = '0'; }, 3500);
 }
+
+function refreshTelemetry() {
+    fetch('/api/broker/telemetry')
+        .then(res => res.json())
+        .then(data => {
+            if (data.success && data.connected) {
+                const balEl = document.getElementById('telemetry-balance');
+                const eqEl = document.getElementById('telemetry-equity');
+                const fmEl = document.getElementById('telemetry-free-margin');
+                const curLabel = document.getElementById('telemetry-currency-label');
+                const sym = data.currency_symbol || '$';
+                if (balEl && typeof data.balance === 'number') {
+                    balEl.textContent = `${sym}${data.balance.toFixed(2)}`;
+                }
+                if (eqEl && typeof data.equity === 'number') {
+                    eqEl.textContent = `${sym}${data.equity.toFixed(2)}`;
+                }
+                if (fmEl && typeof data.free_margin === 'number') {
+                    fmEl.textContent = `${sym}${data.free_margin.toFixed(2)}`;
+                }
+                if (curLabel && data.currency) {
+                    curLabel.textContent = `LIVE TELEMETRY (${data.currency})`;
+                }
+            }
+        })
+        .catch(err => console.debug('Telemetry sync:', err));
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    refreshTelemetry();
+    setInterval(refreshTelemetry, 5000);
+});
 </script>
 {% endblock %}

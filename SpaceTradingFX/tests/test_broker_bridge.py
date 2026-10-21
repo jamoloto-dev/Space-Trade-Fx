@@ -643,3 +643,35 @@ def test_metaapi_cloud_trade_dispatch_uses_clean_url(app, monkeypatch):
                 assert "agiliumtrade.agiliumtrade.ai" not in called_url
         finally:
             app.config["TESTING"] = True
+
+
+def test_api_broker_telemetry_endpoint(app, client):
+    with app.app_context():
+        user = User(id="telem-user-1", email="telem@example.com")
+        user.set_password("SecurePassword123!")
+        db.session.add(user)
+
+        account = BrokerAccount(
+            user_id="telem-user-1",
+            platform="MT5",
+            server="IFXBrokers-Real",
+            account_login="1861949",
+            encrypted_password=encrypt_broker_password("Pass123"),
+            is_connected=True,
+            balance=Decimal("6.03"),
+            currency="USD",
+        )
+        db.session.add(account)
+        db.session.commit()
+
+        with client.session_transaction() as sess:
+            sess["_user_id"] = "telem-user-1"
+
+        resp = client.get("/api/broker/telemetry")
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data["success"] is True
+        assert data["connected"] is True
+        assert data["currency"] == "USD"
+        assert data["currency_symbol"] == "$"
+        assert float(data["balance"]) == 6.03
