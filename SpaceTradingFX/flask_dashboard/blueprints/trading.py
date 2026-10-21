@@ -481,6 +481,113 @@ def api_broker_test_trade_alias():
         return jsonify({"success": False, "error": "Internal broker bridge execution error."}), 500
 
 
+@trading_bp.route("/api/broker/execute-signal", methods=["POST"])
+@login_required
+@require_license
+def api_broker_execute_signal():
+    """Execute a scanned signal directly on the connected IFX Brokers or Deriv account."""
+    from uuid import uuid4
+
+    from ..extensions import db
+    from ..models import BrokerAccount, Trade
+    from ..services.broker_bridge import BrokerError, execute_robot_trade
+
+    broker_account = BrokerAccount.query.filter_by(user_id=current_user.id, is_connected=True).first()
+    if not broker_account:
+        return jsonify({
+            "success": False,
+            "error": "Execution halted: No broker account connected. Please connect your IFX Brokers or Deriv account first.",
+        }), 400
+
+    data = request.get_json(silent=True) or request.form
+    symbol = str(data.get("symbol") or "EURUSD").strip()
+    order_type = str(data.get("order_type") or "BUY").strip().upper()
+    volume = data.get("lot_size") or data.get("volume") or "0.01"
+    sl = data.get("stop_loss") or data.get("sl")
+    tp = data.get("take_profit") or data.get("tp")
+    price = data.get("price") or data.get("entry_price")
+
+    try:
+        result = execute_robot_trade(
+            user_id=current_user.id,
+            symbol=symbol,
+            order_type=order_type,
+            volume=volume,
+            sl=sl,
+            tp=tp,
+            current_price=price,
+        )
+
+        trade = Trade(
+            user_id=current_user.id,
+            currency_pair=symbol,
+            trade_type=order_type,
+            entry_price=Decimal(str(result.get("fill_price", price or 1.0))),
+            lot_size=Decimal(str(result.get("volume", volume))),
+            stop_loss=Decimal(str(sl)) if sl else None,
+            take_profit=Decimal(str(tp)) if tp else None,
+            status="open",
+            execution_mode="broker",
+            idempotency_key=uuid4().hex,
+            mt5_ticket=str(result.get("ticket")),
+            broker_order_id=str(result.get("ticket")),
+            broker_response=result,
+        )
+        db.session.add(trade)
+        db.session.commit()
+
+        return jsonify({
+            "success": True,
+            "ticket": result.get("ticket"),
+            "server": result.get("server"),
+            "symbol": symbol,
+            "order_type": order_type,
+            "volume": result.get("volume"),
+            "fill_price": result.get("fill_price"),
+            "message": f"Real order executed on {result.get('server')}! Ticket #{result.get('ticket')}",
+            "trade_id": trade.id,
+        }), 200
+    except BrokerError as exc:
+        return jsonify({"success": False, "error": str(exc)}), 400
+    except Exception as exc:
+        current_app.logger.exception("Signal execution error for user %s: %s", current_user.id, exc)
+        return jsonify({"success": False, "error": f"Broker trade execution error: {exc}"}), 500
+
+
+@trading_bp.route("/api/trading/toggle-auto-pilot", methods=["POST"])
+@login_required
+def api_trading_toggle_auto_pilot():
+    """Toggle Auto-Pilot Mode (Auto-execute signals >= 65% confidence)."""
+    from ..extensions import db
+    from ..models import TradingPreference
+
+    prefs = TradingPreference.query.filter_by(user_id=current_user.id).first()
+    if not prefs:
+        prefs = TradingPreference(user_id=current_user.id)
+        db.session.add(prefs)
+
+    data = request.get_json(silent=True) or request.form
+    if "enabled" in data:
+        new_state = bool(data.get("enabled"))
+    else:
+        new_state = not prefs.trading_enabled
+
+    prefs.trading_enabled = new_state
+    strategy = dict(prefs.strategy_settings or {})
+    strategy["auto_pilot"] = new_state
+    strategy["automated_broker_trading"] = new_state
+    strategy["min_confidence"] = 65
+    prefs.strategy_settings = strategy
+
+    db.session.commit()
+    msg = (
+        "Auto-Pilot Mode activated (Auto-executing signals ≥ 65% confidence)"
+        if new_state
+        else "Auto-Pilot Mode paused (Manual execution only)"
+    )
+    return jsonify({"success": True, "enabled": new_state, "message": msg}), 200
+
+
 # Error handlers for the blueprint
 @trading_bp.errorhandler(404)
 def not_found(e):

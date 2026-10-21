@@ -7,7 +7,7 @@
     <div class="summary-stats">
         <div class="stat">
             <span class="stat-value {% if total_profit >= 0 %}profit{% else %}loss{% endif %}">
-                {% if total_profit >= 0 %}+{% endif %}${{ "%.2f"|format(total_profit) }}
+                {% if total_profit >= 0 %}+{% endif %}{{ currency_symbol|default('$') }}{{ "%.2f"|format(total_profit) }}
             </span>
             <span class="stat-label">Total P/L</span>
         </div>
@@ -21,6 +21,26 @@
         </div>
     </div>
 </div>
+
+{% if broker_account and broker_account.is_connected and telemetry %}
+<!-- Live Account Telemetry Header Bar -->
+<div class="account-telemetry-bar" style="background: linear-gradient(135deg, rgba(28,28,46,0.95), rgba(40,40,65,0.95)); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 10px 14px; margin-bottom: 15px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px;">
+        <div>
+            <span style="color: rgba(255,255,255,0.6);">BALANCE:</span>
+            <strong style="color: #FFF; margin-left: 4px;">{{ currency_symbol|default('$') }}{{ "%.2f"|format(telemetry.balance) }}</strong>
+        </div>
+        <div>
+            <span style="color: rgba(255,255,255,0.6);">EQUITY:</span>
+            <strong style="color: #4CAF50; margin-left: 4px;">{{ currency_symbol|default('$') }}{{ "%.2f"|format(telemetry.equity) }}</strong>
+        </div>
+        <div>
+            <span style="color: rgba(255,255,255,0.6);">FREE MARGIN:</span>
+            <strong style="color: #60A5FA; margin-left: 4px;">{{ currency_symbol|default('$') }}{{ "%.2f"|format(telemetry.free_margin) }}</strong>
+        </div>
+    </div>
+</div>
+{% endif %}
 
 <!-- Filter Tabs -->
 <div class="filter-tabs">
@@ -91,6 +111,20 @@
             {% endif %}
         </div>
         {% endif %}
+
+        <!-- Action Bar: Lot Size & One-Click Execute -->
+        <div class="signal-execution-bar" style="margin-top: 12px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.08); display: flex; align-items: center; gap: 10px;">
+            <div style="flex: 0 0 85px;">
+                <label style="display: block; font-size: 9px; color: rgba(255,255,255,0.6); font-weight: 600; margin-bottom: 2px;">LOT SIZE</label>
+                <input type="number" step="0.01" min="0.001" max="100.0" value="0.01" class="lot-input-{{ sig.currency_pair }}" style="width: 100%; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; padding: 6px 8px; font-size: 13px; font-weight: 700; color: #FFF; text-align: center; box-sizing: border-box;">
+            </div>
+            <button type="button" 
+                    onclick="executeSignal('{{ sig.currency_pair }}', '{{ sig.signal_type }}', {{ sig.price }}, {{ sig.indicators.get('sl', 0) if sig.indicators and sig.indicators.get('sl') else 'null' }}, {{ sig.indicators.get('tp', 0) if sig.indicators and sig.indicators.get('tp') else 'null' }}, this)"
+                    style="flex: 1; padding: 10px 14px; background: {% if sig.signal_type == 'BUY' %}linear-gradient(135deg, #10B981, #059669){% else %}linear-gradient(135deg, #EF4444, #DC2626){% endif %}; border: none; border-radius: 8px; color: #FFFFFF; font-size: 12px; font-weight: 800; letter-spacing: 0.5px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.25); transition: all 0.2s ease;">
+                <i class="fas fa-bolt" style="color: #FCD34D;"></i>
+                <span>⚡ EXECUTE {{ sig.signal_type }} ORDER</span>
+            </button>
+        </div>
     </div>
     {% endfor %}
     {% else %}
@@ -152,7 +186,7 @@
                     {{ trade.opened_at.strftime('%d %b %Y, %H:%M') if trade.opened_at else 'N/A' }}
                 </div>
                 <div class="trade-pnl {% if trade.profit_loss >= 0 %}profit{% else %}loss{% endif %}">
-                    {% if trade.profit_loss >= 0 %}+{% endif %}${{ "%.2f"|format(trade.profit_loss) }}
+                    {% if trade.profit_loss >= 0 %}+{% endif %}{{ currency_symbol|default('$') }}{{ "%.2f"|format(trade.profit_loss) }}
                 </div>
             </div>
             
@@ -418,6 +452,63 @@ function filterTrades(filter) {
     } else {
         window.location.href = '{{ url_for("mobile.history") }}?filter=' + filter;
     }
+}
+
+function executeSignal(symbol, orderType, price, sl, tp, btn) {
+    const lotInput = document.querySelector('.lot-input-' + symbol);
+    const lotSize = lotInput ? parseFloat(lotInput.value) || 0.01 : 0.01;
+
+    const origHtml = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> EXECUTING...';
+
+    fetch('/api/broker/execute-signal', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token() }}'
+        },
+        body: JSON.stringify({
+            symbol: symbol,
+            order_type: orderType,
+            lot_size: lotSize,
+            price: price,
+            stop_loss: sl,
+            take_profit: tp
+        })
+    })
+    .then(r => r.json())
+    .then(data => {
+        btn.disabled = false;
+        btn.innerHTML = origHtml;
+        if (data.success) {
+            showToast('⚡ Order Executed on ' + (data.server || 'Broker') + '! Ticket #' + data.ticket, 'success');
+            setTimeout(() => {
+                filterTrades('open');
+            }, 1200);
+        } else {
+            showToast('❌ Execution Rejected: ' + (data.error || 'Unknown error'), 'error');
+        }
+    })
+    .catch(err => {
+        btn.disabled = false;
+        btn.innerHTML = origHtml;
+        showToast('❌ Network error: ' + err, 'error');
+    });
+}
+
+function showToast(message, type) {
+    let toast = document.getElementById('mobile-toast');
+    if (!toast) {
+        toast = document.createElement('div');
+        toast.id = 'mobile-toast';
+        toast.style.cssText = 'position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 99999; padding: 12px 20px; border-radius: 10px; font-size: 13px; font-weight: 700; color: #FFF; box-shadow: 0 4px 15px rgba(0,0,0,0.4); transition: opacity 0.3s ease; pointer-events: none; max-width: 90%; text-align: center;';
+        document.body.appendChild(toast);
+    }
+    toast.style.background = type === 'success' ? 'linear-gradient(135deg, #10B981, #059669)' : 'linear-gradient(135deg, #EF4444, #DC2626)';
+    toast.textContent = message;
+    toast.style.opacity = '1';
+    setTimeout(() => { toast.style.opacity = '0'; }, 3500);
 }
 
 document.addEventListener('DOMContentLoaded', function() {

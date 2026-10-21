@@ -44,6 +44,11 @@ from ..notifications import (
     send_email_notification,
 )
 from ..trading_engine import TradingEngine
+from .autonomous_scanner import (
+    run_autonomous_cycle,
+    start_autonomous_scheduler,
+    stop_autonomous_scheduler,
+)
 from .broker_bridge import (
     DEFAULT_SYMBOL_SPECS,
     BrokerConnectionError,
@@ -54,6 +59,8 @@ from .broker_bridge import (
     dispatch_test_ping_trade,
     encrypt_broker_password,
     execute_robot_trade,
+    get_account_currency,
+    get_broker_telemetry,
     get_symbol_spec,
     normalize_volume,
     resolve_filling_mode,
@@ -102,6 +109,10 @@ __all__ = [
     "check_license_valid",
     "require_license",
     "LICENSE_TYPES",
+    # Autonomous Background Scanner
+    "start_autonomous_scheduler",
+    "stop_autonomous_scheduler",
+    "run_autonomous_cycle",
     # Broker Bridge
     "BrokerError",
     "BrokerConnectionError",
@@ -112,6 +123,8 @@ __all__ = [
     "decrypt_broker_password",
     "verify_and_connect",
     "execute_robot_trade",
+    "get_account_currency",
+    "get_broker_telemetry",
     "normalize_volume",
     "resolve_filling_mode",
     "get_symbol_spec",

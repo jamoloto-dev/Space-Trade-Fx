@@ -443,3 +443,124 @@ def test_api_broker_test_trade_without_account(app):
     data = res.get_json()
     assert data["success"] is False
     assert "No active, connected broker account found" in data["error"]
+
+
+def test_api_broker_execute_signal_endpoint(app):
+    client = app.test_client()
+    with app.app_context():
+        user = User(id="signal-user-1", email="siguser@example.com")
+        user.set_password("SigPass123!")
+        db.session.add(user)
+        db.session.commit()
+        create_user_license(user.id, "basic")
+        account = BrokerAccount(
+            user_id=user.id,
+            platform="MT5",
+            server="IFXBrokers-Real",
+            account_login="2160203",
+            encrypted_password=encrypt_broker_password("realPassword123"),
+            is_connected=True,
+        )
+        db.session.add(account)
+        db.session.commit()
+
+    client.post("/login", data={"email": "siguser@example.com", "password": "SigPass123!"})
+    res = client.post(
+        "/api/broker/execute-signal",
+        json={
+            "symbol": "USDZAR",
+            "order_type": "BUY",
+            "lot_size": 0.05,
+            "price": 18.2500,
+            "stop_loss": 18.1500,
+            "take_profit": 18.5000,
+        },
+    )
+    assert res.status_code == 200
+    data = res.get_json()
+    assert data["success"] is True
+    assert data["symbol"] == "USDZAR"
+    assert data["order_type"] == "BUY"
+    assert data["ticket"] is not None
+
+    with app.app_context():
+        from flask_dashboard.models import Trade
+
+        saved_trade = Trade.query.filter_by(user_id="signal-user-1", currency_pair="USDZAR").first()
+        assert saved_trade is not None
+        assert saved_trade.status == "open"
+        assert saved_trade.trade_type == "BUY"
+
+
+def test_api_trading_toggle_auto_pilot_endpoint(app):
+    client = app.test_client()
+    with app.app_context():
+        user = User(id="ap-user-1", email="apuser@example.com")
+        user.set_password("ApPass123!")
+        db.session.add(user)
+        db.session.commit()
+
+    client.post("/login", data={"email": "apuser@example.com", "password": "ApPass123!"})
+    # Toggle ON
+    res_on = client.post("/api/trading/toggle-auto-pilot", json={"enabled": True})
+    assert res_on.status_code == 200
+    assert res_on.get_json()["enabled"] is True
+
+    with app.app_context():
+        from flask_dashboard.models import TradingPreference
+
+        pref = TradingPreference.query.filter_by(user_id="ap-user-1").first()
+        assert pref.trading_enabled is True
+        assert pref.strategy_settings.get("auto_pilot") is True
+
+    # Toggle OFF
+    res_off = client.post("/api/trading/toggle-auto-pilot", json={"enabled": False})
+    assert res_off.status_code == 200
+    assert res_off.get_json()["enabled"] is False
+
+
+def test_dynamic_currency_telemetry(app):
+    with app.app_context():
+        from flask_dashboard.services.broker_bridge import (
+            get_account_currency,
+            get_broker_telemetry,
+        )
+
+        zar_code, zar_sym = get_account_currency("IFXBrokers-Real")
+        assert zar_code == "ZAR"
+        assert zar_sym == "R"
+
+        usd_code, usd_sym = get_account_currency("Deriv-Demo")
+        assert usd_code == "USD"
+        assert usd_sym == "$"
+
+        user = User(id="telemetry-user", email="tele@example.com")
+        user.set_password("TelePass123!")
+        db.session.add(user)
+        db.session.commit()
+
+        account = BrokerAccount(
+            user_id=user.id,
+            platform="MT5",
+            server="IFXBrokers-Real",
+            account_login="2160203",
+            encrypted_password=encrypt_broker_password("pass"),
+            is_connected=True,
+        )
+        db.session.add(account)
+        db.session.commit()
+
+        telemetry = get_broker_telemetry("telemetry-user")
+        assert telemetry["connected"] is True
+        assert telemetry["currency"] == "ZAR"
+        assert telemetry["currency_symbol"] == "R"
+        assert telemetry["balance"] >= 10000
+
+
+def test_autonomous_scanner_cycle(app):
+    with app.app_context():
+        from flask_dashboard.services.autonomous_scanner import run_autonomous_cycle
+
+        report = run_autonomous_cycle(app, force_scan=True)
+        assert "timestamp" in report
+        assert "users_processed" in report

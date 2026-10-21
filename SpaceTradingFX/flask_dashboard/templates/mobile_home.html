@@ -31,6 +31,43 @@
         </div>
     </div>
 
+    {% if broker_account and broker_account.is_connected %}
+    <!-- Sleek Live Account Telemetry Bar -->
+    <div class="account-telemetry-bar" style="background: linear-gradient(135deg, rgba(28,28,46,0.95), rgba(40,40,65,0.95)); border: 1px solid rgba(255,255,255,0.12); border-radius: 14px; padding: 14px 16px; margin: 15px 0 20px; box-shadow: 0 4px 20px rgba(0,0,0,0.35);">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 8px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <span class="status-dot"></span>
+                <span style="font-size: 11px; font-weight: 700; letter-spacing: 0.5px; color: rgba(255,255,255,0.85); text-transform: uppercase;">
+                    LIVE TELEMETRY ({{ account_summary.currency }})
+                </span>
+            </div>
+            <span style="font-size: 10px; color: #4CAF50; background: rgba(76,175,80,0.15); padding: 2px 8px; border-radius: 10px; font-weight: 700;">
+                {{ broker_account.platform }} · {{ broker_account.server }}
+            </span>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; text-align: center;">
+            <div style="background: rgba(0,0,0,0.25); padding: 10px 4px; border-radius: 10px;">
+                <div style="font-size: 10px; color: rgba(255,255,255,0.55); font-weight: 600; text-transform: uppercase; margin-bottom: 4px;">BALANCE</div>
+                <div style="font-size: 14px; font-weight: 800; color: #FFFFFF; word-break: break-all;">
+                    {{ account_summary.currency_symbol }}{{ "%.2f"|format(account_summary.balance) }}
+                </div>
+            </div>
+            <div style="background: rgba(0,0,0,0.25); padding: 10px 4px; border-radius: 10px; border: 1px solid rgba(76,175,80,0.3);">
+                <div style="font-size: 10px; color: #4CAF50; font-weight: 700; text-transform: uppercase; margin-bottom: 4px;">EQUITY</div>
+                <div style="font-size: 14px; font-weight: 800; color: #4CAF50; word-break: break-all;">
+                    {{ account_summary.currency_symbol }}{{ "%.2f"|format(account_summary.equity) }}
+                </div>
+            </div>
+            <div style="background: rgba(0,0,0,0.25); padding: 10px 4px; border-radius: 10px;">
+                <div style="font-size: 10px; color: rgba(255,255,255,0.55); font-weight: 600; text-transform: uppercase; margin-bottom: 4px;">FREE MARGIN</div>
+                <div style="font-size: 14px; font-weight: 800; color: #60A5FA; word-break: break-all;">
+                    {{ account_summary.currency_symbol }}{{ "%.2f"|format(account_summary.free_margin) }}
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
     {% if not broker_account or not broker_account.is_connected %}
     <!-- Prompt to Connect Broker -->
     <a href="{{ url_for('mobile.connect_broker') }}" class="action-card" style="border: 2px solid #F59E0B; background: rgba(245, 158, 11, 0.12); margin-bottom: 15px;">
@@ -59,29 +96,43 @@
         <div class="symbol-card">
             <div class="detail-label">PROFIT/LOSS</div>
             <div class="detail-value {% if account_summary.total_profit >= 0 %}value-positive{% else %}value-negative{% endif %}">
-                ${{ "%.2f"|format(account_summary.total_profit) }}
+                {% if account_summary.total_profit >= 0 %}+{% endif %}{{ account_summary.currency_symbol }}{{ "%.2f"|format(account_summary.total_profit) }}
             </div>
         </div>
     </div>
     
-    <!-- Trading Status -->
-    {% if preferences and preferences.trading_enabled %}
-    <div class="action-card broker-active">
-        <div class="icon"><i class="fas fa-robot"></i></div>
-        <div class="content">
-            <h3>Automated Broker Execution Active</h3>
-            <p>Monitoring {{ preferences.currency_pairs|length }} symbols on {{ broker_account.server if broker_account and broker_account.is_connected else 'Connected Broker' }}</p>
+    <!-- Trading Status / Interactive Auto-Pilot Toggle -->
+    <div class="action-card {% if preferences and preferences.trading_enabled %}broker-active{% endif %}" id="auto-pilot-card" style="display: flex; justify-content: space-between; align-items: center; padding: 16px; margin-bottom: 15px; border-radius: 14px; transition: all 0.3s ease;">
+        <div style="display: flex; align-items: center; gap: 14px; flex: 1; text-align: left;">
+            <div class="icon" id="auto-pilot-icon" style="font-size: 24px; color: {% if preferences and preferences.trading_enabled %}#4CAF50{% else %}#F59E0B{% endif %};">
+                <i class="fas fa-robot"></i>
+            </div>
+            <div class="content" style="flex: 1;">
+                <h3 id="auto-pilot-title" style="margin: 0; font-size: 15px; font-weight: 700;">
+                    {% if preferences and preferences.trading_enabled %}
+                    Auto-Pilot Active (≥ 65% Confidence)
+                    {% else %}
+                    Auto-Pilot Paused (Manual Mode)
+                    {% endif %}
+                </h3>
+                <p id="auto-pilot-subtext" style="margin: 4px 0 0 0; font-size: 11px; color: rgba(255,255,255,0.65);">
+                    {% if preferences and preferences.trading_enabled %}
+                    Auto-executing high-confidence signals on {{ broker_account.server if broker_account and broker_account.is_connected else 'Connected Broker' }}
+                    {% else %}
+                    Toggle ON to auto-execute market signals with ≥ 65% confidence
+                    {% endif %}
+                </p>
+            </div>
+        </div>
+        <div style="margin-left: 12px;">
+            <label class="switch-toggle" style="position: relative; display: inline-block; width: 50px; height: 28px; margin: 0; cursor: pointer;">
+                <input type="checkbox" id="auto-pilot-toggle" {% if preferences and preferences.trading_enabled %}checked{% endif %} onchange="toggleAutoPilot(this.checked)" style="opacity: 0; width: 0; height: 0;">
+                <span class="slider-round" style="position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: {% if preferences and preferences.trading_enabled %}#4CAF50{% else %}#4B5563{% endif %}; transition: .3s; border-radius: 28px;">
+                    <span class="slider-knob" style="position: absolute; content: ''; height: 22px; width: 22px; left: {% if preferences and preferences.trading_enabled %}25px{% else %}3px{% endif %}; bottom: 3px; background-color: white; transition: .3s; border-radius: 50%; box-shadow: 0 2px 5px rgba(0,0,0,0.3);"></span>
+                </span>
+            </label>
         </div>
     </div>
-    {% else %}
-    <a href="{{ url_for('mobile.quotes') }}" class="action-card">
-        <div class="icon"><i class="fas fa-play-circle"></i></div>
-        <div class="content">
-            <h3>Enable Trading</h3>
-            <p>Configure your symbols and start trading</p>
-        </div>
-    </a>
-    {% endif %}
     
     <!-- Quick Actions -->
     <a href="{{ url_for('trading.analyze_markets') }}" class="action-card">
@@ -132,7 +183,7 @@
             <div class="detail-item">
                 <div class="detail-label">P/L</div>
                 <div class="detail-value {% if trade.profit_loss >= 0 %}value-positive{% else %}value-negative{% endif %}">
-                    ${{ "%.2f"|format(trade.profit_loss) }}
+                    {% if trade.profit_loss >= 0 %}+{% endif %}{{ account_summary.currency_symbol }}{{ "%.2f"|format(trade.profit_loss) }}
                 </div>
             </div>
         </div>
@@ -146,4 +197,64 @@
     {% endfor %}
 </div>
 {% endif %}
+
+<script>
+function toggleAutoPilot(enabled) {
+    const card = document.getElementById('auto-pilot-card');
+    const title = document.getElementById('auto-pilot-title');
+    const subtext = document.getElementById('auto-pilot-subtext');
+    const icon = document.getElementById('auto-pilot-icon');
+    const slider = document.querySelector('.slider-round');
+    const knob = document.querySelector('.slider-knob');
+
+    fetch('/api/trading/toggle-auto-pilot', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token() }}'
+        },
+        body: JSON.stringify({ enabled: enabled })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            if (data.enabled) {
+                if (card) card.classList.add('broker-active');
+                if (title) title.textContent = 'Auto-Pilot Active (≥ 65% Confidence)';
+                if (subtext) subtext.textContent = 'Auto-executing high-confidence signals on {{ broker_account.server if broker_account and broker_account.is_connected else "Connected Broker" }}';
+                if (icon) icon.style.color = '#4CAF50';
+                if (slider) slider.style.backgroundColor = '#4CAF50';
+                if (knob) knob.style.left = '25px';
+            } else {
+                if (card) card.classList.remove('broker-active');
+                if (title) title.textContent = 'Auto-Pilot Paused (Manual Mode)';
+                if (subtext) subtext.textContent = 'Toggle ON to auto-execute market signals with ≥ 65% confidence';
+                if (icon) icon.style.color = '#F59E0B';
+                if (slider) slider.style.backgroundColor = '#4B5563';
+                if (knob) knob.style.left = '3px';
+            }
+            showToast(data.message, 'success');
+        } else {
+            showToast('Error: ' + (data.error || 'Failed to update Auto-Pilot'), 'error');
+        }
+    })
+    .catch(err => {
+        showToast('Network error: ' + err, 'error');
+    });
+}
+
+function showToast(message, type) {
+    let toast = document.getElementById('mobile-toast');
+    if (!toast) {
+        toast = document.createElement('div');
+        toast.id = 'mobile-toast';
+        toast.style.cssText = 'position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 99999; padding: 12px 20px; border-radius: 10px; font-size: 13px; font-weight: 700; color: #FFF; box-shadow: 0 4px 15px rgba(0,0,0,0.4); transition: opacity 0.3s ease; pointer-events: none; max-width: 90%; text-align: center;';
+        document.body.appendChild(toast);
+    }
+    toast.style.background = type === 'success' ? 'linear-gradient(135deg, #10B981, #059669)' : 'linear-gradient(135deg, #EF4444, #DC2626)';
+    toast.textContent = message;
+    toast.style.opacity = '1';
+    setTimeout(() => { toast.style.opacity = '0'; }, 3500);
+}
+</script>
 {% endblock %}

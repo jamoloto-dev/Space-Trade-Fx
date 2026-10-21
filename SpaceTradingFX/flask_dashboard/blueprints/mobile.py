@@ -162,6 +162,12 @@ def history():
             seen_pairs.add(sig.currency_pair)
             latest_signals.append(sig)
 
+    from ..models import BrokerAccount
+    from ..services.broker_bridge import get_broker_telemetry
+
+    broker_account = BrokerAccount.query.filter_by(user_id=current_user.id, is_connected=True).first()
+    telemetry = get_broker_telemetry(current_user.id)
+
     return render_template(
         "mobile_history.html",
         trades=trades,
@@ -170,6 +176,10 @@ def history():
         total_profit=total_profit,
         win_rate=round(win_rate, 1),
         latest_signals=latest_signals,
+        broker_account=broker_account,
+        telemetry=telemetry,
+        currency=telemetry["currency"],
+        currency_symbol=telemetry["currency_symbol"],
         active_page="history",
     )
 
@@ -322,6 +332,24 @@ def api_broker_test_trade():
     except Exception:
         current_app.logger.exception("Unexpected error executing broker test trade for user %s", current_user.id)
         return jsonify({"success": False, "error": "Internal broker bridge execution error."}), 500
+
+
+@mobile_bp.route("/api/broker/execute-signal", methods=["POST"])
+@login_required
+def api_broker_execute_signal():
+    """Execute a scanned signal directly on the connected IFX Brokers or Deriv account."""
+    from .trading import api_broker_execute_signal as exec_sig
+
+    return exec_sig()
+
+
+@mobile_bp.route("/api/trading/toggle-auto-pilot", methods=["POST"])
+@login_required
+def api_trading_toggle_auto_pilot():
+    """Toggle Auto-Pilot Mode (Auto-execute signals >= 65% confidence)."""
+    from .trading import api_trading_toggle_auto_pilot as toggle_ap
+
+    return toggle_ap()
 
 
 @mobile_bp.route("/notifications", methods=["GET", "POST"])

@@ -403,6 +403,66 @@ def is_ifx_server(server: str) -> bool:
     return "IFX" in s or "IFXBROKERS" in s
 
 
+def get_account_currency(server: str) -> tuple[str, str]:
+    """Return currency code and symbol based on server and broker conventions.
+
+    IFX Brokers accounts default to South African Rand (ZAR / 'R').
+    Deriv and international accounts default to US Dollar (USD / '$').
+    """
+    if is_ifx_server(server):
+        return ("ZAR", "R")
+    return ("USD", "$")
+
+
+def get_broker_telemetry(user_id: str) -> dict[str, Any]:
+    """Retrieve live account telemetry (Balance, Equity, Free Margin, Currency) for user."""
+    from ..models import BrokerAccount, Trade
+
+    account = BrokerAccount.query.filter_by(user_id=user_id, is_connected=True).first()
+    if not account:
+        return {
+            "connected": False,
+            "currency": "USD",
+            "currency_symbol": "$",
+            "balance": Decimal("0.00"),
+            "equity": Decimal("0.00"),
+            "free_margin": Decimal("0.00"),
+            "floating_pnl": Decimal("0.00"),
+        }
+
+    currency, currency_symbol = get_account_currency(account.server)
+
+    # Calculate realized P/L from closed trades
+    closed_trades = Trade.query.filter_by(user_id=user_id, status="closed").all()
+    realized_pnl = sum((t.profit_loss for t in closed_trades if t.profit_loss is not None), Decimal("0.00"))
+
+    # Base balance (10,000 baseline + realized PnL)
+    base_balance = Decimal("10000.00") + realized_pnl
+
+    # Calculate floating P/L from open trades
+    open_trades = Trade.query.filter_by(user_id=user_id, status="open").all()
+    floating_pnl = sum((t.profit_loss for t in open_trades if t.profit_loss is not None), Decimal("0.00"))
+
+    equity = base_balance + floating_pnl
+
+    # Approximate margin used: lot_size * 1000 per open trade
+    margin_used = sum((Decimal(str(t.lot_size or 0.01)) * Decimal("1000") for t in open_trades), Decimal("0.00"))
+    free_margin = max(Decimal("0.00"), equity - margin_used)
+
+    return {
+        "connected": True,
+        "platform": account.platform,
+        "server": account.server,
+        "account_login": account.account_login,
+        "currency": currency,
+        "currency_symbol": currency_symbol,
+        "balance": base_balance,
+        "equity": equity,
+        "free_margin": free_margin,
+        "floating_pnl": floating_pnl,
+    }
+
+
 def check_tls_endpoint_reachability(host: str, port: int = 443, timeout: float = 2.0) -> bool:
     """Check TCP/TLS reachability for external WebSocket or REST gateways."""
     try:

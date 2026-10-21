@@ -150,7 +150,11 @@ class TradingEngine:
                 signals.append(enriched_signal)
 
                 allowed = (self.preferences.direction_preferences or {}).get(symbol, "BOTH")
-                if submit_automatically and (allowed in {"BOTH", direction}):
+                strength_val = float(signal_data.get("strength", 70))
+                # Institutional duplicate-position protection: never open a second trade on a symbol with an active open position
+                existing_open = Trade.query.filter_by(user_id=self.user_id, currency_pair=symbol, status="open").first()
+
+                if submit_automatically and (allowed in {"BOTH", direction}) and (strength_val >= 65.0) and (existing_open is None):
                     key = f"auto:{symbol}:{self.preferences.timeframe}:{quote_time}:{direction}"
                     try:
                         self.execute_trade(
@@ -162,6 +166,8 @@ class TradingEngine:
                         )
                     except Exception as exc:
                         logger.info("Automated broker trade not executed for %s: %s", symbol, exc)
+                elif submit_automatically and existing_open is not None:
+                    logger.info("Auto-pilot duplicate protection: active position exists for %s, skipping auto-trade", symbol)
 
             except Exception as exc:
                 logger.warning("Error scanning market symbol %s: %s", symbol, exc)
@@ -518,12 +524,23 @@ class TradingEngine:
         winning = sum(1 for trade in closed if trade.profit_loss > 0)
         losing = sum(1 for trade in closed if trade.profit_loss < 0)
         tear_sheet = compute_institutional_tear_sheet(closed)
+
+        from .services.broker_bridge import get_broker_telemetry
+
+        telemetry = get_broker_telemetry(self.user_id)
+
         return {
             "execution_mode": "broker" if broker_acct else "disconnected",
             "broker_connected": broker_acct is not None,
             "broker_server": broker_acct.server if broker_acct else None,
             "broker_platform": broker_acct.platform if broker_acct else None,
             "broker_login": broker_acct.account_login if broker_acct else None,
+            "currency": telemetry["currency"],
+            "currency_symbol": telemetry["currency_symbol"],
+            "balance": telemetry["balance"],
+            "equity": telemetry["equity"],
+            "free_margin": telemetry["free_margin"],
+            "floating_pnl": telemetry["floating_pnl"],
             "total_trades": len(all_trades),
             "winning_trades": winning,
             "losing_trades": losing,

@@ -51,6 +51,15 @@ def create_app(config_override: Mapping[str, object] | None = None) -> Flask:
 
     _register_blueprints(app)
     _register_health_endpoints(app)
+
+    # Start non-blocking autonomous trading scheduler in live runtime
+    import os
+
+    if not app.config.get("TESTING") and (not app.debug or os.environ.get("WERKZEUG_RUN_MAIN") == "true"):
+        from .services.autonomous_scanner import start_autonomous_scheduler
+
+        start_autonomous_scheduler(app)
+
     return app
 
 

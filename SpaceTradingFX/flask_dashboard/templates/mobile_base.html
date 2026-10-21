@@ -60,8 +60,40 @@
         }
         
         /* Container */
+        main#mobile-main {
+            max-width: 680px;
+            margin: 0 auto;
+            width: 100%;
+            padding: 0 16px;
+        }
+        
         .container {
-            padding: 0 20px;
+            max-width: 680px;
+            margin: 0 auto;
+            padding: 0 16px;
+        }
+        
+        .app-header {
+            max-width: 680px;
+            margin: 0 auto;
+            width: 100%;
+        }
+        
+        .environment-banner {
+            max-width: 680px;
+            margin: 0 auto 10px;
+            border-radius: 8px;
+        }
+        
+        button:hover, .btn-primary:hover, .action-card:hover {
+            transform: translateY(-1px);
+            filter: brightness(1.08);
+            transition: all 0.2s ease;
+        }
+        
+        button:active, .btn-primary:active, .action-card:active {
+            transform: translateY(1px);
+            filter: brightness(0.95);
         }
         
         /* Cards - Trading Symbol Style */
@@ -382,13 +414,16 @@
         .bottom-nav {
             position: fixed;
             bottom: 0;
-            left: 0;
-            right: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 100%;
+            max-width: 680px;
             background: var(--primary-bg);
             display: flex;
             justify-content: space-around;
             padding: 15px 0 25px;
             border-top: 1px solid rgba(255,255,255,0.1);
+            z-index: 999;
         }
         
         .bottom-nav a {
