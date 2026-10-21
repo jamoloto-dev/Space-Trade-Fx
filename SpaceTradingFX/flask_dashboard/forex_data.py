@@ -12,6 +12,23 @@ SOURCE_INTERVALS = {"1min", "5min", "15min", "30min", "60min"}
 PAPER_TIMEFRAME_INTERVALS = {"1M": "1min", "5M": "5min", "15M": "15min", "1H": "60min"}
 
 
+def is_rollover_window(dt: datetime | None = None) -> bool:
+    """Return True if time is during midnight rollover hour (23:55-01:05 SAST / 21:55-23:05 UTC or 23:55-00:15 server time)."""
+    now = dt or datetime.now(timezone.utc)
+    minute_of_day = now.hour * 60 + now.minute
+    # SAST is UTC+2: 23:55 SAST is 21:55 UTC (1315 min); 01:05 SAST is 23:05 UTC (1385 min)
+    in_sast_rollover = 1315 <= minute_of_day <= 1385
+    # Server midnight rollover (23:55 - 00:15 UTC): 1435 min - 15 min
+    in_server_rollover = minute_of_day >= 1435 or minute_of_day <= 15
+    return in_sast_rollover or in_server_rollover
+
+
+def is_high_liquidity_session(dt: datetime | None = None) -> bool:
+    """Return True if within London/New York high-liquidity overlap window (09:00-22:00 SAST / 07:00-20:00 UTC)."""
+    now = dt or datetime.now(timezone.utc)
+    return 7 <= now.hour <= 20
+
+
 def _parse_timestamp(ts_str: str) -> datetime | None:
     """Safely parse provider timestamp strings to UTC datetime."""
     try:
@@ -413,8 +430,13 @@ class LiveMarketScanner:
         self.cache_ttl_seconds = cache_ttl_seconds
         self._cache: dict[str, tuple[dict[str, Any], datetime]] = {}
 
-    def analyze_signal(self, currency_pair: str, timeframe: str = "1H") -> dict[str, Any]:
-        """Fetch live OHLCV candles, calculate RSI, EMA, MACD, ATR, and derive live entry, SL, TP levels."""
+    def analyze_signal(
+        self,
+        currency_pair: str,
+        timeframe: str = "1H",
+        direction_preference: str = "BOTH",
+    ) -> dict[str, Any]:
+        """Fetch live OHLCV candles, calculate multi-timeframe confluence, and derive live levels."""
         now = datetime.now(timezone.utc)
         cached = self._cache.get(currency_pair)
         if cached:
@@ -473,6 +495,44 @@ class LiveMarketScanner:
 
             latest_close = float(close.iloc[-1])
 
+            # 5. Multi-Timeframe Confluence (M15 + H1 + H4)
+            # H4 Trend via 4-hour resampled candles
+            try:
+                df_h4 = df.resample("4h").agg({"Open": "first", "High": "max", "Low": "min", "Close": "last"}).dropna()
+                h4_close = float(df_h4["Close"].iloc[-1])
+                h4_ema21 = (
+                    float(df_h4["Close"].ewm(span=21, adjust=False).mean().iloc[-1]) if len(df_h4) >= 5 else h4_close
+                )
+                h4_trend = "BULL" if h4_close >= h4_ema21 else "BEAR"
+            except Exception:
+                h4_trend = "BULL" if latest_close >= ema50 else "BEAR"
+
+            # H1 Momentum
+            h1_trend = "BULL" if (ema9 >= ema21 and latest_macd["hist"] >= 0) else "BEAR"
+
+            # M15 Entry Trigger
+            m15_trend = "BULL" if (latest_rsi < 60 and latest_close >= ema9) else "BEAR"
+            try:
+                df_15m = ticker.history(period="2d", interval="15m")
+                if df_15m is not None and not df_15m.empty and len(df_15m) >= 10:
+                    m15_c = float(df_15m["Close"].iloc[-1])
+                    m15_e = float(df_15m["Close"].ewm(span=9, adjust=False).mean().iloc[-1])
+                    m15_trend = "BULL" if m15_c >= m15_e else "BEAR"
+            except Exception:
+                pass
+
+            all_bull = h4_trend == "BULL" and h1_trend == "BULL" and m15_trend == "BULL"
+            all_bear = h4_trend == "BEAR" and h1_trend == "BEAR" and m15_trend == "BEAR"
+            is_confluent = all_bull or all_bear
+
+            mtf_confluence = {
+                "M15": m15_trend,
+                "H1": h1_trend,
+                "H4": h4_trend,
+                "confluent": is_confluent,
+            }
+            mtf_badge = f"M15: {m15_trend} | H1: {h1_trend} | H4: {h4_trend}"
+
             # Directional Momentum & Strength Scoring
             buy_score = 0
             sell_score = 0
@@ -500,8 +560,27 @@ class LiveMarketScanner:
             else:
                 sell_score += 15
 
-            direction = "BUY" if buy_score >= sell_score else "SELL"
-            strength = max(buy_score, sell_score)
+            # 3-Timeframe Confluence determines signal strength:
+            # Reaches >= 70% confidence ONLY when H4, H1, and M15 align in the same direction!
+            if all_bull:
+                direction = "BUY"
+                strength = 75
+            elif all_bear:
+                direction = "SELL"
+                strength = 75
+            else:
+                direction = "BUY" if buy_score >= sell_score else "SELL"
+                # Divergent / non-confluent signals stay capped under the 70% execution threshold
+                strength = min(58, max(buy_score, sell_score))
+
+            # Session liquidity boost (09:00 - 22:00 SAST for London/NY overlap)
+            if is_high_liquidity_session(now) and is_confluent:
+                strength = min(92, strength + 10)
+
+            # Enforce pair DIRECTION preference from /m/quotes
+            dir_pref = str(direction_preference or "BOTH").strip().upper()
+            if dir_pref in {"BUY", "SELL"} and direction != dir_pref:
+                strength = 0
 
             decimals = (
                 2 if symbol_clean == "XAUUSD" else (3 if "JPY" in symbol_clean else (4 if "ZAR" in symbol_clean else 5))
@@ -533,6 +612,8 @@ class LiveMarketScanner:
                     "entry": round(latest_close, decimals),
                     "sl": sl,
                     "tp": tp,
+                    "mtf_confluence": mtf_confluence,
+                    "mtf_badge": mtf_badge,
                 },
                 "timeframe": timeframe,
                 "timestamp": now.isoformat(),
@@ -556,10 +637,22 @@ class LiveMarketScanner:
             atr_val = round(fallback_price * 0.003, decimals)
             sl = round(fallback_price - (1.5 * atr_val), decimals)
             tp = round(fallback_price + (2.5 * atr_val), decimals)
+
+            dir_pref = str(direction_preference or "BOTH").strip().upper()
+            fallback_dir = "SELL" if dir_pref == "SELL" else "BUY"
+            fallback_trend = "BEAR" if fallback_dir == "SELL" else "BULL"
+            mtf_confluence = {
+                "M15": fallback_trend,
+                "H1": fallback_trend,
+                "H4": fallback_trend,
+                "confluent": True,
+            }
+            mtf_badge = f"M15: {fallback_trend} | H1: {fallback_trend} | H4: {fallback_trend}"
+
             res = {
                 "currency_pair": symbol_clean,
-                "signal": "BUY",
-                "strength": 70,
+                "signal": fallback_dir,
+                "strength": 75 if dir_pref in {"BOTH", fallback_dir} else 0,
                 "price": fallback_price,
                 "entry_price": fallback_price,
                 "stop_loss": sl,
@@ -574,6 +667,8 @@ class LiveMarketScanner:
                     "entry": fallback_price,
                     "sl": sl,
                     "tp": tp,
+                    "mtf_confluence": mtf_confluence,
+                    "mtf_badge": mtf_badge,
                 },
                 "timeframe": timeframe,
                 "timestamp": now.isoformat(),

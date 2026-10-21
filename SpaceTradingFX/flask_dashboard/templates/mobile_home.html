@@ -31,6 +31,18 @@
         </div>
     </div>
 
+    {% if preferences and preferences.strategy_settings and preferences.strategy_settings.get('circuit_breaker_tripped') %}
+    <!-- Circuit Breaker Protective Status Badge -->
+    <div style="background: linear-gradient(135deg, rgba(239, 68, 68, 0.25), rgba(185, 28, 28, 0.35)); border: 1.5px solid #EF4444; border-radius: 12px; padding: 12px 16px; margin: 12px 0 16px; text-align: center; box-shadow: 0 4px 15px rgba(239, 68, 68, 0.25);">
+        <div style="color: #EF4444; font-weight: 800; font-size: 13px; display: flex; align-items: center; justify-content: center; gap: 8px; letter-spacing: 0.5px;">
+            <i class="fas fa-shield-alt"></i> 🚨 DAILY LOSS CIRCUIT BREAKER TRIPPED
+        </div>
+        <div style="color: rgba(255,255,255,0.85); font-size: 11px; margin-top: 4px; font-weight: 600;">
+            -5.0% daily drawdown limit reached. Auto-Pilot paused until tomorrow to preserve margin.
+        </div>
+    </div>
+    {% endif %}
+
     {% if broker_account and broker_account.is_connected %}
     <!-- Sleek Live Account Telemetry Bar -->
     <div class="account-telemetry-bar" style="background: linear-gradient(135deg, rgba(28,28,46,0.95), rgba(40,40,65,0.95)); border: 1px solid rgba(255,255,255,0.12); border-radius: 14px; padding: 14px 16px; margin: 15px 0 20px; box-shadow: 0 4px 20px rgba(0,0,0,0.35);">

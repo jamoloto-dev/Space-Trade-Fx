@@ -10,6 +10,7 @@ from __future__ import annotations
 import threading
 import time
 from datetime import datetime, timezone
+from decimal import Decimal
 from typing import Any
 
 from flask import Flask
@@ -21,10 +22,13 @@ _scheduler_lock = threading.Lock()
 
 
 def run_autonomous_cycle(app: Flask, force_scan: bool = False) -> dict[str, Any]:
-    """Execute one complete cycle of open position synchronization and autonomous signal scanning."""
+    """Execute one complete cycle of open position synchronization, auto break-even, and circuit breaker protection."""
     from ..extensions import db
+    from ..forex_data import is_rollover_window
     from ..models import BrokerAccount, Trade, TradingPreference
+    from ..notifications import create_notification
     from ..trading_engine import TradingEngine
+    from .broker_bridge import get_broker_telemetry
 
     report: dict[str, Any] = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -44,26 +48,116 @@ def run_autonomous_cycle(app: Flask, force_scan: bool = False) -> dict[str, Any]
             open_trade_users = db.session.query(Trade.user_id).filter_by(status="open").distinct().all()
             user_ids.update(row[0] for row in open_trade_users)
 
+            now_utc = datetime.now(timezone.utc)
+            today_str = now_utc.date().isoformat()
+            today_start = now_utc.replace(hour=0, minute=0, second=0, microsecond=0)
+
             for user_id in user_ids:
                 report["users_processed"] += 1
                 try:
                     engine = TradingEngine(user_id)
 
-                    # 1. Synchronize open trades floating P/L and check TP/SL hits
+                    # 1. Synchronize open trades floating P/L, evaluate Auto Break-Even, and check TP/SL hits
                     closed_count = engine.update_open_trades()
                     report["positions_updated"] += closed_count
 
-                    # 2. Check if user has Auto-Pilot enabled or if scan is forced
                     prefs = TradingPreference.query.filter_by(user_id=user_id).first()
-                    strategy = prefs.strategy_settings or {} if prefs else {}
+                    strategy = dict(prefs.strategy_settings or {}) if prefs else {}
+
+                    # 2. Reset circuit breaker if crossing into a new trading day
+                    tripped_date = strategy.get("circuit_breaker_date")
+                    if tripped_date and tripped_date != today_str:
+                        strategy["circuit_breaker_tripped"] = False
+                        strategy["circuit_breaker_date"] = None
+                        if prefs:
+                            prefs.strategy_settings = strategy
+                            db.session.commit()
+
+                    # 3. Daily Loss Circuit Breaker calculation
+                    # Sum realized P/L of trades closed today
+                    closed_today = Trade.query.filter(
+                        Trade.user_id == user_id,
+                        Trade.status == "closed",
+                        Trade.closed_at >= today_start,
+                    ).all()
+                    today_realized_pnl = sum(
+                        (t.profit_loss for t in closed_today if t.profit_loss is not None), Decimal("0.00")
+                    )
+
+                    # Sum floating P/L of currently open trades
+                    open_trades = Trade.query.filter_by(user_id=user_id, status="open").all()
+                    floating_pnl = sum(
+                        (t.profit_loss for t in open_trades if t.profit_loss is not None), Decimal("0.00")
+                    )
+                    total_daily_pnl = today_realized_pnl + floating_pnl
+
+                    # Telemetry balance check
+                    telemetry = get_broker_telemetry(user_id)
+                    balance = Decimal(str(telemetry.get("balance", "3000.00")))
+                    if balance <= 0:
+                        balance = Decimal("3000.00")
+
+                    max_loss_pct = Decimal(str(strategy.get("max_daily_loss_pct", "5.0")))
+                    max_loss_amount = (balance * (max_loss_pct / Decimal("100"))).quantize(Decimal("0.01"))
+
+                    is_circuit_breaker_active = bool(strategy.get("circuit_breaker_tripped", False))
+
+                    if total_daily_pnl <= -max_loss_amount:
+                        if not is_circuit_breaker_active:
+                            strategy["circuit_breaker_tripped"] = True
+                            strategy["circuit_breaker_date"] = today_str
+                            strategy["circuit_breaker_pnl"] = str(total_daily_pnl)
+                            if prefs:
+                                prefs.strategy_settings = strategy
+                                prefs.trading_enabled = False
+                                db.session.commit()
+                            is_circuit_breaker_active = True
+
+                            try:
+                                create_notification(
+                                    user_id=user_id,
+                                    title="🚨 Daily Loss Circuit Breaker Tripped",
+                                    message=(
+                                        f"Protective Circuit Breaker Active: Total daily drawdown ({total_daily_pnl:.2f}) "
+                                        f"reached -{max_loss_pct}% (Max: -{max_loss_amount:.2f}). "
+                                        f"Auto-Pilot has been paused until tomorrow to preserve account margin."
+                                    ),
+                                    notification_type="system",
+                                    data={
+                                        "circuit_breaker": True,
+                                        "daily_pnl": str(total_daily_pnl),
+                                        "limit": str(max_loss_amount),
+                                    },
+                                )
+                            except Exception:
+                                pass
+                            logger.warning(
+                                "Circuit Breaker Tripped for user %s: Daily P/L %s reached limit -%s",
+                                user_id,
+                                total_daily_pnl,
+                                max_loss_amount,
+                            )
+
+                    # 4. Check if Rollover spread protection is active
+                    in_rollover = is_rollover_window(now_utc)
+
+                    # 5. Check if user has Auto-Pilot enabled and not blocked
                     auto_pilot_enabled = bool(
                         prefs
+                        and not is_circuit_breaker_active
+                        and not in_rollover
                         and (
                             prefs.trading_enabled
                             or strategy.get("auto_pilot")
                             or strategy.get("automated_broker_trading")
                         )
                     )
+
+                    if in_rollover and (prefs and prefs.trading_enabled):
+                        logger.info(
+                            "Rollover spread protection active (23:55-01:05 SAST), Auto-Pilot order execution paused for %s",
+                            user_id,
+                        )
 
                     if force_scan or auto_pilot_enabled:
                         before_count = Trade.query.filter_by(user_id=user_id, status="open").count()

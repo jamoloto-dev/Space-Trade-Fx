@@ -81,6 +81,13 @@
                 {{ "%.0f"|format(sig.strength) }}% Confidence
             </div>
         </div>
+
+        {% if sig.indicators and sig.indicators.get('mtf_badge') %}
+        <div style="margin-bottom: 10px; display: inline-flex; align-items: center; gap: 6px; background: rgba(16, 185, 129, 0.12); border: 1px solid rgba(16, 185, 129, 0.28); border-radius: 6px; padding: 3px 8px; font-size: 10px; font-weight: 700; color: #10B981; letter-spacing: 0.3px;">
+            <i class="fas fa-layer-group"></i>
+            <span>{{ sig.indicators.get('mtf_badge') }}</span>
+        </div>
+        {% endif %}
         
         <div class="details" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 10px; text-align: center; background: rgba(0,0,0,0.2); padding: 8px; border-radius: 8px;">
             <div>
@@ -121,7 +128,7 @@
         <div class="signal-execution-bar" style="margin-top: 12px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.08); display: flex; align-items: center; gap: 10px;">
             <div style="flex: 0 0 85px;">
                 <label style="display: block; font-size: 9px; color: rgba(255,255,255,0.6); font-weight: 600; margin-bottom: 2px;">LOT SIZE</label>
-                <input type="number" step="0.01" min="0.001" max="100.0" value="0.01" class="lot-input-{{ sig.currency_pair }}" style="width: 100%; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; padding: 6px 8px; font-size: 13px; font-weight: 700; color: #FFF; text-align: center; box-sizing: border-box;">
+                <input type="number" step="0.01" min="0.001" max="100.0" value="{{ sig.configured_lot_size|default('0.01') }}" class="lot-input-{{ sig.currency_pair }}" style="width: 100%; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; padding: 6px 8px; font-size: 13px; font-weight: 700; color: #FFF; text-align: center; box-sizing: border-box;">
             </div>
             <button type="button" 
                     onclick="executeSignal('{{ sig.currency_pair }}', '{{ sig.signal_type }}', {{ sig.price }}, {{ sig.indicators.get('sl', 0) if sig.indicators and sig.indicators.get('sl') else 'null' }}, {{ sig.indicators.get('tp', 0) if sig.indicators and sig.indicators.get('tp') else 'null' }}, this)"

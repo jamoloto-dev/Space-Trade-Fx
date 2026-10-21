@@ -32,7 +32,8 @@
                     <div class="lot-size-input">
                         <button type="button" onclick="adjustLot('{{ symbol.pair }}', -0.01)">-</button>
                         <input type="number" name="lot_{{ symbol.pair }}" id="lot_{{ symbol.pair }}" 
-                            value="{{ symbol.lot_size }}" step="0.01" min="0.01" max="1">
+                            value="{{ symbol.lot_size }}" step="0.01" min="0.001" max="100"
+                            onchange="updateQuotesConfig('{{ symbol.pair }}', { lot_size: this.value })">
                         <button type="button" onclick="adjustLot('{{ symbol.pair }}', 0.01)">+</button>
                     </div>
                 </div>
@@ -42,7 +43,8 @@
                 </div>
                 <div class="detail-item">
                     <div class="detail-label">DIRECTION</div>
-                    <select class="direction-select" name="direction_{{ symbol.pair }}">
+                    <select class="direction-select" name="direction_{{ symbol.pair }}"
+                        onchange="updateQuotesConfig('{{ symbol.pair }}', { direction: this.value })">
                         <option value="BOTH" {% if symbol.direction == 'BOTH' %}selected{% endif %}>BOTH</option>
                         <option value="BUY" {% if symbol.direction == 'BUY' %}selected{% endif %}>BUY</option>
                         <option value="SELL" {% if symbol.direction == 'SELL' %}selected{% endif %}>SELL</option>
@@ -86,8 +88,47 @@
 function adjustLot(pair, delta) {
     const input = document.getElementById('lot_' + pair);
     let value = parseFloat(input.value) + delta;
-    value = Math.max(0.01, Math.min(1, value));
+    value = Math.max(0.001, Math.min(100, value));
     input.value = value.toFixed(2);
+    updateQuotesConfig(pair, { lot_size: input.value });
+}
+
+async function updateQuotesConfig(pair, updates) {
+    const csrfInput = document.querySelector('input[name="csrf_token"]');
+    const csrfToken = csrfInput ? csrfInput.value : '';
+    try {
+        const payload = Object.assign({ pair: pair }, updates);
+        const res = await fetch("{{ url_for('mobile.api_quotes_update_config') }}", {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken
+            },
+            body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (data.success) {
+            const msg = updates.direction 
+                ? `${pair} Direction: ${updates.direction}` 
+                : `${pair} Lot: ${updates.lot_size}`;
+            showMiniToast(msg);
+        }
+    } catch (e) {
+        console.error('Failed to sync quote config:', e);
+    }
+}
+
+function showMiniToast(message) {
+    let toast = document.getElementById('quotes-toast');
+    if (!toast) {
+        toast = document.createElement('div');
+        toast.id = 'quotes-toast';
+        toast.style.cssText = 'position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 99999; padding: 10px 18px; border-radius: 8px; font-size: 12px; font-weight: 700; color: #FFF; background: linear-gradient(135deg, #10B981, #059669); box-shadow: 0 4px 15px rgba(0,0,0,0.3); transition: opacity 0.3s ease; pointer-events: none;';
+        document.body.appendChild(toast);
+    }
+    toast.textContent = '✓ ' + message;
+    toast.style.opacity = '1';
+    setTimeout(() => { toast.style.opacity = '0'; }, 2200);
 }
 
 document.addEventListener('DOMContentLoaded', function() {
@@ -112,6 +153,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     },
                     body: JSON.stringify({ pair: pair, enabled: enabled })
                 });
+                showMiniToast(enabled ? `${pair} Enabled` : `${pair} Disabled`);
             } catch (err) {
                 console.error('Failed to sync pair toggle:', err);
             }

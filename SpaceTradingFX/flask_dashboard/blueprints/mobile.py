@@ -185,6 +185,11 @@ def history():
 
     from ..services.broker_bridge import get_broker_telemetry
 
+    strat_settings = (preferences.strategy_settings or {}) if preferences else {}
+    configured_lot_sizes = strat_settings.get("lot_sizes", {})
+    for sig in latest_signals:
+        sig.configured_lot_size = str(configured_lot_sizes.get(sig.currency_pair, "0.01"))
+
     broker_account = BrokerAccount.query.filter_by(user_id=current_user.id, is_connected=True).first()
     telemetry = get_broker_telemetry(current_user.id)
 
@@ -232,6 +237,62 @@ def api_quotes_toggle():
     preferences.currency_pairs = pairs
     db.session.commit()
     return jsonify({"success": True, "currency_pairs": pairs})
+
+
+@mobile_bp.route("/api/quotes/update-config", methods=["POST"])
+@login_required
+def api_quotes_update_config():
+    """Immediately persist pair lot size and direction preference to SQLite database."""
+    from ..extensions import db
+    from ..models import TradingPreference
+
+    data = request.get_json(silent=True) or request.form
+    pair = str(data.get("pair", "")).strip().upper()
+
+    if pair not in SUPPORTED_SYMBOLS:
+        return jsonify({"success": False, "error": f"Invalid or unsupported symbol: {pair}"}), 400
+
+    preferences = TradingPreference.query.filter_by(user_id=current_user.id).first()
+    if not preferences:
+        preferences = TradingPreference(user_id=current_user.id)
+        db.session.add(preferences)
+
+    # 1. Update Direction if provided
+    direction = data.get("direction")
+    if direction:
+        direction_clean = str(direction).strip().upper()
+        if direction_clean in {"BOTH", "BUY", "SELL"}:
+            dir_prefs = dict(preferences.direction_preferences or {})
+            dir_prefs[pair] = direction_clean
+            preferences.direction_preferences = dir_prefs
+
+    # 2. Update Lot Size if provided
+    lot_size = data.get("lot_size")
+    if lot_size is not None:
+        try:
+            parsed_lot = Decimal(str(lot_size))
+            if parsed_lot <= Decimal("0") or parsed_lot > Decimal("100.00"):
+                return jsonify({"success": False, "error": "Lot size must be between 0.001 and 100.00"}), 400
+            strat_settings = dict(preferences.strategy_settings or {})
+            lot_dict = dict(strat_settings.get("lot_sizes", {}))
+            lot_dict[pair] = str(parsed_lot.quantize(Decimal("0.0001")))
+            strat_settings["lot_sizes"] = lot_dict
+            preferences.strategy_settings = strat_settings
+        except (InvalidOperation, ValueError):
+            return jsonify({"success": False, "error": "Invalid numerical lot size"}), 400
+
+    db.session.commit()
+    return (
+        jsonify(
+            {
+                "success": True,
+                "pair": pair,
+                "direction": (preferences.direction_preferences or {}).get(pair, "BOTH"),
+                "lot_size": (preferences.strategy_settings or {}).get("lot_sizes", {}).get(pair, "0.01"),
+            }
+        ),
+        200,
+    )
 
 
 @mobile_bp.route("/profile", methods=["GET", "POST"])
@@ -410,9 +471,10 @@ def api_trading_toggle_auto_pilot():
 
 
 @mobile_bp.route("/notifications", methods=["GET", "POST"])
+@mobile_bp.route("/alerts", methods=["GET", "POST"])
 @login_required
 def notifications():
-    """Mobile notifications page"""
+    """Mobile real-time execution, signal, and risk alerts feed"""
     if request.method == "POST":
         action = request.form.get("action")
 
@@ -433,10 +495,10 @@ def notifications():
                 from ..notifications import mark_all_as_read
 
                 mark_all_as_read(current_user.id)
-                flash("All notifications marked as read", "success")
+                flash("All alerts marked as read", "success")
             except Exception:
                 current_app.logger.exception("Failed to mark all notifications read for user %s", current_user.id)
-                flash("Could not mark all notifications as read", "error")
+                flash("Could not mark all alerts as read", "error")
 
         return redirect(url_for("mobile.notifications"))
 
@@ -451,7 +513,7 @@ def notifications():
         unread_count = 0
 
     return render_template(
-        "mobile_notifications.html",
+        "mobile_alerts.html",
         notifications=user_notifications,
         unread_count=unread_count,
         active_page="notifications",

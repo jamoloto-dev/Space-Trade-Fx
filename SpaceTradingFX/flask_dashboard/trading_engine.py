@@ -92,10 +92,22 @@ class TradingEngine:
                 logger.warning("Ignoring unsupported symbol %s", symbol)
                 continue
             try:
-                signal_data = scanner.analyze_signal(symbol, timeframe=self.preferences.timeframe)
+                allowed = (self.preferences.direction_preferences or {}).get(symbol, "BOTH")
+                try:
+                    signal_data = scanner.analyze_signal(
+                        symbol, timeframe=self.preferences.timeframe, direction_preference=allowed
+                    )
+                except TypeError:
+                    signal_data = scanner.analyze_signal(symbol, timeframe=self.preferences.timeframe)
+
                 direction = str(signal_data.get("signal", "BUY")).upper()
                 if direction not in {"BUY", "SELL"}:
                     direction = "BUY"
+
+                # Strict direction preference enforcement from /m/quotes
+                if allowed in {"BUY", "SELL"} and direction != allowed:
+                    logger.info("Direction preference %s suppresses %s signal for %s", allowed, direction, symbol)
+                    continue
 
                 # Check if current quote is available or use signal price
                 try:
@@ -150,15 +162,34 @@ class TradingEngine:
                 }
                 signals.append(enriched_signal)
 
-                allowed = (self.preferences.direction_preferences or {}).get(symbol, "BOTH")
                 strength_val = float(signal_data.get("strength", 70))
+                # Log alert feed notification for high confidence signals (>= 70%)
+                if strength_val >= 70.0:
+                    try:
+                        from .notifications import create_notification
+
+                        create_notification(
+                            user_id=self.user_id,
+                            title=f"⚡ High Confidence {direction} Signal: {symbol}",
+                            message=f"{symbol} {direction} opportunity detected with {strength_val:.0f}% confidence. Entry: {entry_float}, SL: {sl}, TP: {tp}.",
+                            notification_type="signal",
+                            data=enriched_signal,
+                        )
+                    except Exception:
+                        pass
+
                 # Institutional duplicate-position protection: never open a second trade on a symbol with an active open position
                 existing_open = Trade.query.filter_by(user_id=self.user_id, currency_pair=symbol, status="open").first()
 
+                from .forex_data import is_rollover_window
+
+                in_rollover = is_rollover_window()
+
                 if (
                     submit_automatically
+                    and not in_rollover
                     and (allowed in {"BOTH", direction})
-                    and (strength_val >= 65.0)
+                    and (strength_val >= 70.0)
                     and (existing_open is None)
                 ):
                     key = f"auto:{symbol}:{self.preferences.timeframe}:{quote_time}:{direction}"
@@ -172,6 +203,8 @@ class TradingEngine:
                         )
                     except Exception as exc:
                         logger.info("Automated broker trade not executed for %s: %s", symbol, exc)
+                elif submit_automatically and in_rollover:
+                    logger.info("Rollover spread protection active: skipping automated execution on %s", symbol)
                 elif submit_automatically and existing_open is not None:
                     logger.info(
                         "Auto-pilot duplicate protection: active position exists for %s, skipping auto-trade", symbol
@@ -421,6 +454,51 @@ class TradingEngine:
             try:
                 current_price = self._get_current_price(trade.currency_pair)
                 trade.profit_loss = self._profit_loss(trade, current_price)
+
+                # Auto Break-Even Protection:
+                # As soon as an open trade reaches >= 50% of the way to Take Profit (1:1 R:R),
+                # automatically move the Stop Loss to the Entry Price (Break-Even)
+                if trade.entry_price and trade.take_profit:
+                    entry = Decimal(str(trade.entry_price))
+                    tp = Decimal(str(trade.take_profit))
+                    sl = Decimal(str(trade.stop_loss)) if trade.stop_loss is not None else None
+                    moved_be = False
+
+                    if trade.trade_type == "BUY" and tp > entry:
+                        half_target = entry + ((tp - entry) * Decimal("0.50"))
+                        if current_price >= half_target and (sl is None or sl < entry):
+                            trade.stop_loss = entry
+                            moved_be = True
+                    elif trade.trade_type == "SELL" and tp < entry:
+                        half_target = entry - ((entry - tp) * Decimal("0.50"))
+                        if current_price <= half_target and (sl is None or sl > entry):
+                            trade.stop_loss = entry
+                            moved_be = True
+
+                    if moved_be:
+                        db.session.commit()
+                        try:
+                            from .notifications import create_notification
+
+                            create_notification(
+                                user_id=self.user_id,
+                                title=f"🛡️ Stop Loss Moved to Break-Even: {trade.currency_pair}",
+                                message=(
+                                    f"Risk-free protection activated: {trade.currency_pair} {trade.trade_type} "
+                                    f"SL moved to entry price {entry} after reaching 50% of TP distance."
+                                ),
+                                notification_type="trade",
+                                data={"trade_id": trade.id, "symbol": trade.currency_pair, "break_even": str(entry)},
+                            )
+                        except Exception:
+                            pass
+                        logger.info(
+                            "Auto Break-Even triggered for trade %s (%s) at %s",
+                            trade.id,
+                            trade.currency_pair,
+                            entry,
+                        )
+
                 if self._check_exit_conditions(trade, current_price) and self._close_trade(trade, current_price):
                     closed_count += 1
             except MarketDataUnavailable as exc:
@@ -468,6 +546,22 @@ class TradingEngine:
             target_id=str(trade.id),
             metadata={"execution_mode": "broker"},
         )
+        try:
+            from .notifications import create_notification
+
+            pnl_sign = "+" if trade.profit_loss >= 0 else ""
+            create_notification(
+                user_id=self.user_id,
+                title=f"📊 Position Closed: {trade.currency_pair} {trade.trade_type}",
+                message=(
+                    f"Ticket #{trade.id} ({trade.currency_pair}) closed at {exit_price}. "
+                    f"Realized P/L: {pnl_sign}{trade.profit_loss}."
+                ),
+                notification_type="trade",
+                data={"trade_id": trade.id, "profit_loss": str(trade.profit_loss), "exit_price": str(exit_price)},
+            )
+        except Exception:
+            pass
         logger.info("Broker trade closed: id=%s profit_loss=%s", trade.id, trade.profit_loss)
         return True
 

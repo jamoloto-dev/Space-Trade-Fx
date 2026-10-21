@@ -563,6 +563,22 @@ def api_broker_execute_signal():
         db.session.add(trade)
         db.session.commit()
 
+        try:
+            from ..notifications import create_notification
+
+            create_notification(
+                user_id=current_user.id,
+                title=f"⚡ Order Executed: {symbol} {order_type}",
+                message=(
+                    f"Broker Ticket #{result.get('ticket')}: {symbol} {order_type} "
+                    f"{result.get('volume')} lots executed at {result.get('fill_price')} on {result.get('server')}."
+                ),
+                notification_type="trade",
+                data={"ticket": result.get("ticket"), "symbol": symbol, "side": order_type, "trade_id": trade.id},
+            )
+        except Exception:
+            pass
+
         return jsonify(
             {
                 "success": True,
@@ -615,6 +631,24 @@ def api_trading_toggle_auto_pilot():
         else "Auto-Pilot Mode paused (Manual execution only)"
     )
     return jsonify({"success": True, "enabled": new_state, "message": msg}), 200
+
+
+@trading_bp.route("/api/quotes/update-config", methods=["POST"])
+@login_required
+def api_quotes_update_config():
+    """Proxy route to mobile quotes update config."""
+    from .mobile import api_quotes_update_config as mobile_update
+
+    return mobile_update()
+
+
+@trading_bp.route("/api/quotes/toggle", methods=["POST"])
+@login_required
+def api_quotes_toggle():
+    """Proxy route to mobile quotes toggle."""
+    from .mobile import api_quotes_toggle as mobile_toggle
+
+    return mobile_toggle()
 
 
 # Error handlers for the blueprint
