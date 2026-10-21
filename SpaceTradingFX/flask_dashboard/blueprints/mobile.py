@@ -129,7 +129,11 @@ def history():
     """Mobile trade history page"""
     from ..models import Trade, TradingSignal
 
-    filter_type = request.args.get("filter", "all")
+    filter_type = request.args.get("tab") or request.args.get("filter", "all")
+    filter_type = filter_type.strip().lower()
+    if filter_type not in ["all", "open", "closed", "profit", "loss", "analysing"]:
+        filter_type = "all"
+
     query = Trade.query.filter_by(user_id=current_user.id)
 
     if filter_type == "open":
@@ -148,7 +152,15 @@ def history():
     total_profit = sum(t.profit_loss for t in closed_trades)
     winning_trades = len([t for t in closed_trades if t.profit_loss >= 0])
     win_rate = (winning_trades / total_trades * 100) if total_trades > 0 else 0
-    latest_signals = TradingSignal.query.order_by(TradingSignal.created_at.desc()).limit(6).all()
+
+    # Fetch recent signals and deduplicate by currency_pair keeping only the single newest per pair
+    raw_signals = TradingSignal.query.order_by(TradingSignal.created_at.desc()).all()
+    seen_pairs = set()
+    latest_signals = []
+    for sig in raw_signals:
+        if sig.currency_pair not in seen_pairs:
+            seen_pairs.add(sig.currency_pair)
+            latest_signals.append(sig)
 
     return render_template(
         "mobile_history.html",

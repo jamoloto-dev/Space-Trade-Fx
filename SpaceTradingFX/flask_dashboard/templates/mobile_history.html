@@ -22,9 +22,19 @@
     </div>
 </div>
 
+<!-- Filter Tabs -->
+<div class="filter-tabs">
+    <button class="filter-tab {% if filter == 'all' %}active{% endif %}" data-filter="all" onclick="filterTrades('all')">ALL</button>
+    <button class="filter-tab {% if filter == 'open' %}active{% endif %}" data-filter="open" onclick="filterTrades('open')">OPEN</button>
+    <button class="filter-tab {% if filter == 'closed' %}active{% endif %}" data-filter="closed" onclick="filterTrades('closed')">CLOSED</button>
+    <button class="filter-tab {% if filter == 'profit' %}active{% endif %}" data-filter="profit" onclick="filterTrades('profit')">PROFIT</button>
+    <button class="filter-tab {% if filter == 'loss' %}active{% endif %}" data-filter="loss" onclick="filterTrades('loss')">LOSS</button>
+    <button class="filter-tab {% if filter == 'analysing' %}active{% endif %}" data-filter="analysing" onclick="filterTrades('analysing')">ANALYSING</button>
+</div>
+
 <!-- Market Analysis Signals Section -->
-{% if latest_signals %}
-<div style="margin-top: 15px; margin-bottom: 25px;">
+<div id="market-opportunities-section" style="{% if filter != 'analysing' %}display: none;{% endif %} margin-top: 15px; margin-bottom: 25px;">
+    {% if latest_signals %}
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; padding: 0 4px;">
         <h3 style="font-size: 13px; font-weight: 700; letter-spacing: 1px; color: rgba(255,255,255,0.85); text-transform: uppercase;">
             <i class="fas fa-chart-line" style="color: #4CAF50; margin-right: 6px;"></i> LIVE MARKET OPPORTUNITIES
@@ -83,20 +93,19 @@
         {% endif %}
     </div>
     {% endfor %}
-</div>
-{% endif %}
-
-<!-- Filter Tabs -->
-<div class="filter-tabs">
-    <button class="filter-tab {% if filter == 'all' %}active{% endif %}" onclick="filterTrades('all')">ALL</button>
-    <button class="filter-tab {% if filter == 'open' %}active{% endif %}" onclick="filterTrades('open')">OPEN</button>
-    <button class="filter-tab {% if filter == 'closed' %}active{% endif %}" onclick="filterTrades('closed')">CLOSED</button>
-    <button class="filter-tab {% if filter == 'profit' %}active{% endif %}" onclick="filterTrades('profit')">PROFIT</button>
-    <button class="filter-tab {% if filter == 'loss' %}active{% endif %}" onclick="filterTrades('loss')">LOSS</button>
+    {% else %}
+    <div class="no-trades" style="text-align: center; padding: 40px 20px; color: rgba(255,255,255,0.5);">
+        <i class="fas fa-chart-line" style="font-size: 40px; margin-bottom: 15px; color: #4CAF50;"></i>
+        <p style="font-size: 14px; margin-bottom: 15px;">No market opportunities scanned yet</p>
+        <a href="{{ url_for('trading.analyze_markets') }}" class="btn-start-trading" style="padding: 10px 20px; font-size: 12px;">
+            <i class="fas fa-sync-alt" style="margin-right: 6px;"></i> ANALYZE MARKETS
+        </a>
+    </div>
+    {% endif %}
 </div>
 
 <!-- Trade List -->
-<div class="trade-list">
+<div class="trade-list" id="trade-list-section" style="{% if filter == 'analysing' %}display: none;{% endif %}">
     {% if trades %}
         {% for trade in trades %}
         <div class="trade-card {% if trade.status == 'open' %}open{% endif %}">
@@ -388,7 +397,46 @@
 
 <script>
 function filterTrades(filter) {
-    window.location.href = '{{ url_for("mobile.history") }}?filter=' + filter;
+    if (filter === 'analysing') {
+        document.querySelectorAll('.filter-tab').forEach(function(el) {
+            el.classList.remove('active');
+        });
+        const analysingBtn = document.querySelector('.filter-tab[data-filter="analysing"]');
+        if (analysingBtn) analysingBtn.classList.add('active');
+
+        const oppSection = document.getElementById('market-opportunities-section');
+        const tradeList = document.getElementById('trade-list-section');
+        if (oppSection) oppSection.style.display = 'block';
+        if (tradeList) tradeList.style.display = 'none';
+
+        if (window.history && window.history.pushState) {
+            const url = new URL(window.location.href);
+            url.searchParams.set('tab', 'analysing');
+            url.searchParams.delete('filter');
+            window.history.pushState(null, '', url.toString());
+        }
+    } else {
+        window.location.href = '{{ url_for("mobile.history") }}?filter=' + filter;
+    }
 }
+
+document.addEventListener('DOMContentLoaded', function() {
+    const params = new URLSearchParams(window.location.search);
+    const tabParam = (params.get('tab') || params.get('filter') || '').toLowerCase();
+    const hash = (window.location.hash || '').toLowerCase();
+
+    if (tabParam === 'analysing' || hash === '#analysing') {
+        document.querySelectorAll('.filter-tab').forEach(function(el) {
+            el.classList.remove('active');
+        });
+        const analysingBtn = document.querySelector('.filter-tab[data-filter="analysing"]');
+        if (analysingBtn) analysingBtn.classList.add('active');
+
+        const oppSection = document.getElementById('market-opportunities-section');
+        const tradeList = document.getElementById('trade-list-section');
+        if (oppSection) oppSection.style.display = 'block';
+        if (tradeList) tradeList.style.display = 'none';
+    }
+});
 </script>
 {% endblock %}
