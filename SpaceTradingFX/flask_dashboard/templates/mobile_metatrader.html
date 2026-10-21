@@ -3,36 +3,20 @@
 {% block content %}
 <!-- Connection Status -->
 <div class="connection-status">
-    <div class="status status--warning">
-        <span class="status-dot inactive"></span>
-        PAPER TRADING ONLY — BROKER CONNECTION DISABLED
+    <div class="status status--active">
+        <span class="status-dot"></span>
+        INSTITUTIONAL BROKER CONNECTION INTERFACE
     </div>
 </div>
 
-<!-- Paper ledger icon -->
-<div class="mt-logo">
-    <div class="paper-logo">
-        <span class="paper-logo__mark">P</span>
-    </div>
-</div>
+<div class="section-title">BROKER ACCOUNT INTEGRATION</div>
 
-<div class="section-title">PAPER TRADING STATUS</div>
-
-<form method="POST" action="{{ url_for('mobile.metatrader') }}">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <button type="submit" class="btn-primary">
-        <i class="fas fa-shield-alt"></i>
-        PAPER TRADING IS ACTIVE
-    </button>
-</form>
-
-<div style="margin-top: 20px; text-align: center;">
-    <a href="{{ url_for('mobile.connect_broker') }}" class="btn-primary" style="display: block; text-decoration: none; background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%); color: #0F172A; font-weight: 800; border-radius: 9999px;">
-        <i class="fas fa-plug"></i> Connect MT4 / MT5 Broker Account
+<div style="margin: 20px 0; text-align: center;">
+    <p style="color: rgba(255,255,255,0.8); font-size: 14px; line-height: 1.6; margin-bottom: 20px;">
+        Connect your institutional or retail trading account on <strong>IFX Brokers</strong> (MT4/MT5) or <strong>Deriv</strong> (MT5) to enable automated robot signal execution.
+    </p>
+    <a href="{{ url_for('mobile.connect_broker') }}" class="btn-primary" style="display: block; text-decoration: none; background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%); color: #0F172A; font-weight: 800; border-radius: 9999px; padding: 15px; font-size: 15px;">
+        <i class="fas fa-plug"></i> Manage MT4 / MT5 Broker Connection
     </a>
 </div>
-
-
-<script>
-</script>
 {% endblock %}

@@ -15,9 +15,14 @@
     </div>
     
     {% if has_license %}
-    <!-- EA Connected State -->
-    <div class="status-text status-text--active">PAPER TRADING READY</div>
-    <div class="status-subtext">SIMULATED POSITIONS ONLY — NO BROKER CONNECTION</div>
+    <!-- Broker Connected State -->
+    {% if broker_account and broker_account.is_connected %}
+    <div class="status-text status-text--active">BROKER CONNECTED</div>
+    <div class="status-subtext">{{ broker_account.server }} ({{ broker_account.platform }}) · #{{ broker_account.account_login }}</div>
+    {% else %}
+    <div class="status-text" style="color: #F59E0B;">EXECUTION HALTED — NO BROKER</div>
+    <div class="status-subtext">CONNECT YOUR IFX BROKERS OR DERIV ACCOUNT TO START TRADING</div>
+    {% endif %}
     
     <div class="license-status">
         <div class="license-status__badge">
@@ -25,9 +30,20 @@
             <span>{{ license.license_type|upper }} LICENSE</span>
         </div>
     </div>
+
+    {% if not broker_account or not broker_account.is_connected %}
+    <!-- Prompt to Connect Broker -->
+    <a href="{{ url_for('mobile.connect_broker') }}" class="action-card" style="border: 2px solid #F59E0B; background: rgba(245, 158, 11, 0.12); margin-bottom: 15px;">
+        <div class="icon" style="color: #F59E0B;"><i class="fas fa-plug"></i></div>
+        <div class="content">
+            <h3 style="color: #F59E0B;">Connect Broker Account</h3>
+            <p>Connect your IFX Brokers or Deriv MT4/MT5 account to activate live trade execution.</p>
+        </div>
+    </a>
+    {% endif %}
     
     <!-- Stats Summary -->
-    <div class="paper-metrics">
+    <div class="broker-metrics">
         <div class="symbol-card">
             <div class="detail-label">TOTAL TRADES</div>
             <div class="detail-value">{{ account_summary.total_trades }}</div>
@@ -43,18 +59,18 @@
         <div class="symbol-card">
             <div class="detail-label">PROFIT/LOSS</div>
             <div class="detail-value {% if account_summary.total_profit >= 0 %}value-positive{% else %}value-negative{% endif %}">
-                SIM {{ "%.2f"|format(account_summary.total_profit) }}
+                ${{ "%.2f"|format(account_summary.total_profit) }}
             </div>
         </div>
     </div>
     
     <!-- Trading Status -->
     {% if preferences and preferences.trading_enabled %}
-    <div class="action-card paper-active">
+    <div class="action-card broker-active">
         <div class="icon"><i class="fas fa-robot"></i></div>
         <div class="content">
-            <h3>Paper simulation active</h3>
-            <p>Monitoring {{ preferences.currency_pairs|length }} configured symbols</p>
+            <h3>Automated Broker Execution Active</h3>
+            <p>Monitoring {{ preferences.currency_pairs|length }} symbols on {{ broker_account.server if broker_account and broker_account.is_connected else 'Connected Broker' }}</p>
         </div>
     </div>
     {% else %}
@@ -94,7 +110,7 @@
 {% if has_license and account_summary.trades %}
 <!-- Active Trades -->
 <div class="trade-section">
-    <h3 class="trade-section__title">OPEN PAPER TRADES</h3>
+    <h3 class="trade-section__title">OPEN BROKER POSITIONS</h3>
     {% for trade in account_summary.trades %}
     <div class="symbol-card">
         <div class="symbol-header">
@@ -116,14 +132,14 @@
             <div class="detail-item">
                 <div class="detail-label">P/L</div>
                 <div class="detail-value {% if trade.profit_loss >= 0 %}value-positive{% else %}value-negative{% endif %}">
-                    SIM {{ "%.2f"|format(trade.profit_loss) }}
+                    ${{ "%.2f"|format(trade.profit_loss) }}
                 </div>
             </div>
         </div>
-        <form method="POST" action="{{ url_for('trading.close_trade', trade_id=trade.id) }}" class="close-paper-form">
+        <form method="POST" action="{{ url_for('trading.close_trade', trade_id=trade.id) }}" class="close-trade-form">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn-primary">
-                <i class="fas fa-times"></i> CLOSE TRADE
+                <i class="fas fa-times"></i> CLOSE POSITION
             </button>
         </form>
     </div>

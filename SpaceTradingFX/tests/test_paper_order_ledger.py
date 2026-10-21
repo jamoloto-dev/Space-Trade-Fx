@@ -5,7 +5,8 @@ from decimal import Decimal
 import pytest
 from flask_dashboard import create_app
 from flask_dashboard.extensions import db
-from flask_dashboard.models import PaperOrderEvent, Trade, User
+from flask_dashboard.models import BrokerAccount, PaperOrderEvent, Trade, User
+from flask_dashboard.services.broker_bridge import encrypt_broker_password
 from flask_dashboard.trading_engine import PaperTradeValidationError, TradingEngine
 
 
@@ -32,6 +33,16 @@ def app():
     with app.app_context():
         db.create_all()
         db.session.add(User(id="ledger-user", email="ledger@example.com"))
+        db.session.add(
+            BrokerAccount(
+                user_id="ledger-user",
+                server="IFXBrokers-Demo",
+                platform="MT5",
+                account_login="10001",
+                encrypted_password=encrypt_broker_password("dummy-password"),
+                is_connected=True,
+            )
+        )
         db.session.commit()
         yield app
         db.session.remove()
@@ -53,7 +64,7 @@ def test_paper_order_has_immutable_lifecycle_and_idempotency(app):
         duplicate = engine.execute_trade("EURUSD", "BUY", {"source": "test"}, idempotency_key="order-key-1")
 
         assert duplicate.id == trade.id
-        assert trade.execution_mode == "paper"
+        assert trade.execution_mode == "broker"
         assert trade.status == "open"
         assert [
             event.event_type

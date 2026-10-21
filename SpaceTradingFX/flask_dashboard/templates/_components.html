@@ -20,8 +20,8 @@
 {%- endmacro %}
 
 {% macro lifecycle(status) -%}
-<ol class="lifecycle" aria-label="Paper trade lifecycle">
-  {% for step in ['Draft', 'Validated', 'Paper acknowledged', 'Open', 'Closed / Rejected'] %}
+<ol class="lifecycle" aria-label="Order lifecycle">
+  {% for step in ['Draft', 'Validated', 'Broker acknowledged', 'Open', 'Closed / Rejected'] %}
   <li class="{% if step|lower in status|lower %}is-current{% endif %}">{{ step }}</li>
   {% endfor %}
 </ol>

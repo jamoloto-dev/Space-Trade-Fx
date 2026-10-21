@@ -71,24 +71,24 @@ def test_admin_ui_requires_administrator(app):
     assert client.get("/admin/ui").status_code == 200
 
 
-def test_all_mt5_http_operations_fail_closed_as_paper_only(app):
+def test_all_mt5_http_operations_fail_closed_without_connected_broker(app):
     client = app.test_client()
     with app.app_context():
-        user = User(id="paper-user", email="paper@example.com")
+        user = User(id="broker-test-user", email="brokeruser@example.com")
         user.set_password("a-secure-test-password")
         db.session.add(user)
         db.session.commit()
         create_user_license(user.id, "basic")
 
-    client.post("/login", data={"email": "paper@example.com", "password": "a-secure-test-password"})
+    client.post("/login", data={"email": "brokeruser@example.com", "password": "a-secure-test-password"})
     for method, path in (
         (client.post, "/api/mt5/connect"),
         (client.get, "/api/mt5/positions"),
         (client.post, "/api/mt5/trade"),
     ):
         response = method(path)
-        assert response.status_code == 409
-        assert response.get_json()["execution_mode"] == "paper"
+        assert response.status_code == 400
+        assert response.get_json()["success"] is False
 
 
 def test_quarantined_mt5_connector_cannot_connect_or_submit_orders():

@@ -548,18 +548,18 @@
         .toggle input:checked + .slider::before { transform:translateX(26px); }
         .avatar--offset { margin-top:30px; } .status-text--active { color:var(--accent-green); } .license-status { margin:30px 0; }
         .license-status__badge { display:inline-flex; align-items:center; gap:8px; background:rgba(76,175,80,.2); padding:10px 20px; border-radius:20px; color:var(--accent-green); font-weight:600; }
-        .paper-metrics { display:grid; grid-template-columns:repeat(2,1fr); gap:15px; margin:20px; text-align:center; } .paper-metrics .detail-value { font-size:24px; }
-        .value-positive { color:var(--accent-green); } .value-negative { color:#F44336; } .paper-active { background:rgba(76,175,80,.2); border:1px solid var(--accent-green); }
+        .broker-metrics, .paper-metrics { display:grid; grid-template-columns:repeat(2,1fr); gap:15px; margin:20px; text-align:center; } .broker-metrics .detail-value, .paper-metrics .detail-value { font-size:24px; }
+        .value-positive { color:var(--accent-green); } .value-negative { color:#F44336; } .broker-active, .paper-active { background:rgba(76,175,80,.2); border:1px solid var(--accent-green); }
         .trade-section { padding:0 20px; } .trade-section__title { margin-bottom:15px; font-size:14px; letter-spacing:1px; }
         .trade-side { margin-left:auto; padding:5px 12px; border-radius:15px; font-size:12px; font-weight:600; } .trade-side--buy { background:rgba(76,175,80,.3); color:var(--accent-green); } .trade-side--sell { background:rgba(244,67,54,.3); color:#F44336; }
-        .close-paper-form { margin-top:15px; } .close-paper-form .btn-primary { width:100%; margin:0; background:rgba(244,67,54,.3); }
-        .inline-form { display:inline; } .status--warning { color:var(--accent-orange); } .paper-logo { width:60px; height:60px; margin:0 auto; background:linear-gradient(135deg,#4CAF50,#8BC34A,#FFC107,#2196F3); border-radius:12px; display:flex; align-items:center; justify-content:center; } .paper-logo__mark { font-size:24px; font-weight:bold; color:#fff; }
+        .close-broker-form, .close-paper-form { margin-top:15px; } .close-broker-form .btn-primary, .close-paper-form .btn-primary { width:100%; margin:0; background:rgba(244,67,54,.3); }
+        .inline-form { display:inline; } .status--warning { color:var(--accent-orange); } .broker-logo, .paper-logo { width:60px; height:60px; margin:0 auto; background:linear-gradient(135deg,#4CAF50,#8BC34A,#FFC107,#2196F3); border-radius:12px; display:flex; align-items:center; justify-content:center; } .broker-logo__mark, .paper-logo__mark { font-size:24px; font-weight:bold; color:#fff; }
     </style>
     {% block extra_css %}{% endblock %}
 </head>
 <body>
     <a class="skip-link" href="#mobile-main">Skip to main content</a>
-    <p class="environment-banner" role="status">PAPER TRADING — NO LIVE ORDERS</p>
+    <p class="environment-banner" role="status"><i class="fas fa-network-wired" style="color: #F59E0B; margin-right: 6px;"></i> INSTITUTIONAL BROKER EXECUTION · IFX BROKERS & DERIV</p>
     {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
             {% for category, message in messages %}

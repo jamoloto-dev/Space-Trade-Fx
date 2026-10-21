@@ -450,14 +450,16 @@
                         id="serverInput" 
                         name="server" 
                         list="brokerServerPresets"
-                        placeholder="Exness-MT5Real10, IFXBrokers-Live, Deriv-Server"
+                        placeholder="IFXBrokersHoldings-Demo, IFXBrokersHoldings-Real, Deriv-Server"
                         value="{{ broker_account.server if broker_account else '' }}" 
                         required 
                         autocomplete="off"
                         spellcheck="false"
                     >
                     <datalist id="brokerServerPresets">
+                        <option value="IFXBrokersHoldings-Demo">IFX Brokers Holdings Demo</option>
                         <option value="IFXBrokers-Demo">IFX Brokers Demo</option>
+                        <option value="IFXBrokersHoldings-Real">IFX Brokers Holdings Real</option>
                         <option value="IFXBrokers-Live">IFX Brokers Live</option>
                         <option value="Deriv-Demo">Deriv MT5 Demo</option>
                         <option value="Deriv-Server">Deriv MT5 Live</option>
@@ -466,8 +468,14 @@
                 </div>
                 <!-- Quick-select Server Preset Chips -->
                 <div class="server-preset-chips">
+                    <span class="preset-chip" onclick="selectServerPreset('IFXBrokersHoldings-Demo')">
+                        <i class="fas fa-circle-dot" style="font-size: 8px;"></i> IFX Holdings Demo
+                    </span>
                     <span class="preset-chip" onclick="selectServerPreset('IFXBrokers-Demo')">
                         <i class="fas fa-circle-dot" style="font-size: 8px;"></i> IFX Demo
+                    </span>
+                    <span class="preset-chip" onclick="selectServerPreset('IFXBrokersHoldings-Real')">
+                        <i class="fas fa-circle-dot" style="font-size: 8px;"></i> IFX Holdings Real
                     </span>
                     <span class="preset-chip" onclick="selectServerPreset('IFXBrokers-Live')">
                         <i class="fas fa-circle-dot" style="font-size: 8px;"></i> IFX Live

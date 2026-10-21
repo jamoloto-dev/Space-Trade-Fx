@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}SpaceTradingFX · Paper Trading{% endblock %}</title>
+  <title>{% block title %}SpaceTradingFX · Broker Trading Engine{% endblock %}</title>
   <style>
     :root { --ink:#152238; --muted:#607089; --surface:#fff; --canvas:#f4f7fb; --line:#d9e1ec; --brand:#315bd6; --brand-dark:#2344a5; --good:#087f5b; --good-bg:#d9f7eb; --warn:#9a5b00; --warn-bg:#fff1c7; --bad:#b42318; --bad-bg:#ffebe9; --info:#2458b8; --info-bg:#e8f0ff; --radius:14px; --shadow:0 8px 24px rgb(21 34 56 / .08); --space-1:.5rem; --space-2:.75rem; --space-3:1rem; --space-4:1.5rem; --space-5:2rem; }
     * { box-sizing:border-box; } body { margin:0; background:var(--canvas); color:var(--ink); font:16px/1.55 Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
@@ -28,10 +28,11 @@
   <div class="shell">
     <header class="topbar">
       <a class="brand" href="{{ url_for('auth.index') }}">SpaceTradingFX</a>
-      <span class="environment" role="status">Paper Trading — No Live Orders</span>
+      <span class="environment" role="status">Broker Engine · IFX Brokers & Deriv</span>
       {% if current_user.is_authenticated %}<nav class="nav" aria-label="Primary navigation">
         <a href="{{ url_for('trading.dashboard') }}" {% if request.endpoint == 'trading.dashboard' %}aria-current="page"{% endif %}>Dashboard</a>
-        <a href="{{ url_for('mobile.history') }}" {% if request.endpoint == 'mobile.history' %}aria-current="page"{% endif %}>Paper history</a>
+        <a href="{{ url_for('mobile.connect_broker') }}" {% if request.endpoint == 'mobile.connect_broker' %}aria-current="page"{% endif %}>Broker Account</a>
+        <a href="{{ url_for('mobile.history') }}" {% if request.endpoint == 'mobile.history' %}aria-current="page"{% endif %}>Trade History</a>
         <a href="{{ url_for('auth.view_licenses') }}" {% if request.endpoint == 'auth.view_licenses' %}aria-current="page"{% endif %}>Licenses</a>
         <a href="{{ url_for('trading.preferences') }}" {% if request.endpoint == 'trading.preferences' %}aria-current="page"{% endif %}>Risk settings</a>
         <a href="{{ url_for('auth.logout') }}">Sign out</a>

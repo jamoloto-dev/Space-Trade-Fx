@@ -9,18 +9,19 @@ Usage:
 """
 
 import os
+
+
 def main():
     """Run the SpaceTradingFX Flask application"""
     from flask_dashboard import create_app
 
     app = create_app()
 
-    
     # Configuration
     debug = os.environ.get('FLASK_DEBUG', 'True').lower() == 'true'
     host = os.environ.get('FLASK_HOST', '127.0.0.1')
     port = int(os.environ.get('FLASK_PORT', 5000))
-    
+
     print(f"""
 ╔══════════════════════════════════════════════════════════════╗
 ║                    SpaceTradingFX                            ║
@@ -31,7 +32,7 @@ def main():
 ║  Press Ctrl+C to stop                                        ║
 ╚══════════════════════════════════════════════════════════════╝
 """)
-    
+
     app.run(host=host, port=port, debug=debug)
 
 

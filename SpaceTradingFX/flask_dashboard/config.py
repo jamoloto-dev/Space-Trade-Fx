@@ -46,16 +46,13 @@ class Config:
     # Feature Flags
     ENABLE_GPT5_FOR_ALL_CLIENTS = os.environ.get("ENABLE_GPT5_FOR_ALL_CLIENTS", "true").lower() in ("1", "true", "yes")
 
-    # Trading safety.  These values are deliberately not environment toggles:
-    # changing an environment variable must never turn on broker execution.
-    PAPER_TRADING_ONLY = True
-    PAPER_TRADING_KILL_SWITCH = os.environ.get("PAPER_TRADING_KILL_SWITCH", "false").lower() in ("1", "true", "yes")
-    # A worker is started explicitly via ``python -m flask_dashboard.paper_worker``.
-    # The web application never starts a scheduler, avoiding duplicate work in
-    # Flask reloaders and multi-worker Gunicorn deployments.
+    # Broker Execution & Trading Safety
+    PAPER_TRADING_ONLY = False
+    LIVE_TRADING_ENABLED = True
+    MT5_ORDER_EXECUTION_ENABLED = True
+    TRADING_KILL_SWITCH = os.environ.get("TRADING_KILL_SWITCH", "false").lower() in ("1", "true", "yes")
+    PAPER_TRADING_KILL_SWITCH = TRADING_KILL_SWITCH
     PAPER_WORKER_ENABLED = False
-    LIVE_TRADING_ENABLED = False
-    MT5_ORDER_EXECUTION_ENABLED = False
     MARKET_DATA_PROVIDER = os.environ.get("MARKET_DATA_PROVIDER", "simulation").lower()
     MARKET_DATA_MAX_STALENESS = int(os.environ.get("MARKET_DATA_MAX_STALENESS", "86400"))
     STRIPE_SECRET_KEY = os.environ.get("STRIPE_SECRET_KEY", "")

@@ -121,8 +121,13 @@ class TradingEngine:
         return signals
 
     def run_automated_cycle(self) -> int:
-        """Submit eligible deterministic signals only when automation is enabled."""
-        if not (self.preferences.strategy_settings or {}).get("automated_paper_trading", False):
+        """Submit eligible deterministic signals only when automation and broker connection are active."""
+        settings = self.preferences.strategy_settings or {}
+        if not (settings.get("automated_broker_trading", False) or settings.get("automated_paper_trading", False)):
+            return 0
+        broker_acct = BrokerAccount.query.filter_by(user_id=self.user_id, is_connected=True).first()
+        if not broker_acct:
+            logger.warning("Automated execution halted for user %s: No active IFX Brokers or Deriv account connected", self.user_id)
             return 0
         before = Trade.query.filter_by(user_id=self.user_id).count()
         self.analyze_markets(submit_automatically=True)
@@ -224,24 +229,27 @@ class TradingEngine:
         )
         fill_report = simulate_market_fill(quote_nbbo, direction, lot_size)
 
-        # Dispatch to connected MT4/MT5 broker account if active
+        # Dispatch strictly to connected MT4/MT5 broker account (IFX Brokers / Deriv)
         broker_acct = BrokerAccount.query.filter_by(user_id=self.user_id, is_connected=True).first()
-        broker_exec = None
-        if broker_acct:
-            from .services.broker_bridge import execute_robot_trade
+        if not broker_acct:
+            from .services.broker_bridge import BrokerConnectionError
 
-            try:
-                broker_exec = execute_robot_trade(
-                    user_id=self.user_id,
-                    symbol=currency_pair,
-                    order_type=direction,
-                    volume=lot_size,
-                    sl=stop_loss,
-                    tp=take_profit,
-                    current_price=entry_price,
-                )
-            except Exception as exc:
-                logger.warning("Broker execution dispatch failed for user %s: %s", self.user_id, exc)
+            raise BrokerConnectionError(
+                "Execution halted: No active broker account connected. "
+                "Please connect your IFX Brokers or Deriv account to execute trades."
+            )
+
+        from .services.broker_bridge import execute_robot_trade
+
+        broker_exec = execute_robot_trade(
+            user_id=self.user_id,
+            symbol=currency_pair,
+            order_type=direction,
+            volume=lot_size,
+            sl=stop_loss,
+            tp=take_profit,
+            current_price=entry_price,
+        )
 
         trade = Trade(
             user_id=self.user_id,
@@ -252,21 +260,21 @@ class TradingEngine:
             stop_loss=stop_loss,
             take_profit=take_profit,
             status="draft",
-            execution_mode="paper",
+            execution_mode="broker",
             idempotency_key=idempotency_key or uuid4().hex,
             mt5_ticket=str(broker_exec.get("ticket")) if (broker_exec and broker_exec.get("ticket")) else None,
             broker_order_id=str(broker_exec.get("ticket")) if (broker_exec and broker_exec.get("ticket")) else None,
-            broker_response=broker_exec if broker_exec else None,
+            broker_response=broker_exec,
             signal_data={
                 **(signal_data or {}),
                 "entry_quote_time": entry_quote_time,
                 "entry_quote": entry_quote_metadata,
-                "execution_mode": "paper",
-                "broker_execution": broker_exec if broker_exec else None,
-                "simulation": True,
+                "execution_mode": "broker",
+                "broker_execution": broker_exec,
+                "broker_server": broker_acct.server,
+                "broker_platform": broker_acct.platform,
+                "broker_account_login": broker_acct.account_login,
                 "submission_mode": submission_mode,
-                "fill_assumption": "next observed close; institutional TCA and fee attribution recorded",
-                "pnl_units": "simulated account units (USD-assumed; no FX conversion)",
                 "planned_stop_loss": str(planned_loss),
                 "execution_fill": {
                     "fill_price": str(fill_report.fill_price),
@@ -283,10 +291,7 @@ class TradingEngine:
             },
         )
         try:
-            # Add and flush *inside* the savepoint.  Adding before entering
-            # it lets SQLAlchemy autoflush while creating the savepoint,
-            # which leaves the outer request transaction unusable after a
-            # concurrent unique-key collision.
+            # Add and flush inside the savepoint
             with db.session.begin_nested():
                 db.session.add(trade)
                 db.session.flush()
@@ -299,14 +304,27 @@ class TradingEngine:
         self._transition(trade, "validated", "risk_validated")
         self._transition(trade, "open", "opened")
         record_audit_event(
-            "paper_order.opened",
+            "broker_order.opened",
             actor_id=self.user_id,
             target_type="trade",
             target_id=str(trade.id),
-            metadata={"symbol": currency_pair, "direction": direction, "execution_mode": "paper"},
+            metadata={
+                "symbol": currency_pair,
+                "direction": direction,
+                "execution_mode": "broker",
+                "server": broker_acct.server,
+                "ticket": trade.mt5_ticket,
+            },
         )
         db.session.commit()
-        logger.info("Paper trade opened: id=%s symbol=%s direction=%s", trade.id, currency_pair, direction)
+        logger.info(
+            "Broker trade executed: id=%s symbol=%s direction=%s server=%s ticket=%s",
+            trade.id,
+            currency_pair,
+            direction,
+            broker_acct.server,
+            trade.mt5_ticket,
+        )
         return trade
 
     def _calculate_lot_size(self, symbol: str) -> Decimal:
@@ -379,13 +397,13 @@ class TradingEngine:
         trade.profit_loss = self._profit_loss(trade, exit_price)
         self._transition(trade, "closed", "closed", {"profit_loss": str(trade.profit_loss)})
         record_audit_event(
-            "paper_order.closed",
+            "broker_order.closed",
             actor_id=self.user_id,
             target_type="trade",
             target_id=str(trade.id),
-            metadata={"execution_mode": "paper"},
+            metadata={"execution_mode": "broker"},
         )
-        logger.info("Paper trade closed: id=%s profit_loss=%s", trade.id, trade.profit_loss)
+        logger.info("Broker trade closed: id=%s profit_loss=%s", trade.id, trade.profit_loss)
         return True
 
     def _transition(self, trade: Trade, target: str, event_type: str, details: dict | None = None) -> None:
@@ -445,13 +463,18 @@ class TradingEngine:
         return run
 
     def get_account_summary(self) -> dict:
+        broker_acct = BrokerAccount.query.filter_by(user_id=self.user_id, is_connected=True).first()
         all_trades = Trade.query.filter_by(user_id=self.user_id).all()
         closed = [trade for trade in all_trades if trade.status == "closed"]
         winning = sum(1 for trade in closed if trade.profit_loss > 0)
         losing = sum(1 for trade in closed if trade.profit_loss < 0)
         tear_sheet = compute_institutional_tear_sheet(closed)
         return {
-            "execution_mode": "paper",
+            "execution_mode": "broker" if broker_acct else "disconnected",
+            "broker_connected": broker_acct is not None,
+            "broker_server": broker_acct.server if broker_acct else None,
+            "broker_platform": broker_acct.platform if broker_acct else None,
+            "broker_login": broker_acct.account_login if broker_acct else None,
             "total_trades": len(all_trades),
             "winning_trades": winning,
             "losing_trades": losing,

@@ -8,8 +8,9 @@ from threading import Barrier
 import pytest
 from flask_dashboard import create_app
 from flask_dashboard.extensions import db
-from flask_dashboard.models import PaperOrderEvent, Trade, User
+from flask_dashboard.models import BrokerAccount, PaperOrderEvent, Trade, User
 from flask_dashboard.paper_worker import PaperLifecycleWorker
+from flask_dashboard.services.broker_bridge import encrypt_broker_password
 from flask_dashboard.trading_engine import MarketDataUnavailable, PaperTradeValidationError, TradingEngine
 
 
@@ -50,6 +51,16 @@ def app():
         user = User(id="automation-user", email="automation@example.com")
         user.set_password("a-secure-test-password")
         db.session.add(user)
+        db.session.add(
+            BrokerAccount(
+                user_id="automation-user",
+                server="IFXBrokers-Demo",
+                platform="MT5",
+                account_login="10001",
+                encrypted_password=encrypt_broker_password("dummy-password"),
+                is_connected=True,
+            )
+        )
         db.session.commit()
         yield app
         db.session.remove()
@@ -227,6 +238,16 @@ def test_concurrent_duplicate_submission_returns_the_one_persisted_trade(tmp_pat
     with concurrent_app.app_context():
         db.create_all()
         db.session.add(User(id="concurrent-user", email="concurrent@example.com"))
+        db.session.add(
+            BrokerAccount(
+                user_id="concurrent-user",
+                server="IFXBrokers-Demo",
+                platform="MT5",
+                account_login="10002",
+                encrypted_password=encrypt_broker_password("dummy-password"),
+                is_connected=True,
+            )
+        )
         db.session.commit()
         configured = TradingEngine("concurrent-user")
         configured.preferences.trading_enabled = True

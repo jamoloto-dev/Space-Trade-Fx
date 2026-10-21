@@ -19,15 +19,16 @@ DEFAULT_LOT_SIZES = {symbol: DEFAULT_LOT_SIZE for symbol in SUPPORTED_SYMBOLS}
 @mobile_bp.route("/home")
 @login_required
 def home():
-    """Mobile Home Screen - EA Connection Status"""
+    """Mobile Home Screen - Broker Connection and Robot Status"""
     from ..license_manager import check_license_valid
-    from ..models import TradingPreference
+    from ..models import BrokerAccount, TradingPreference
     from ..trading_engine import TradingEngine
 
     is_valid, license_info = check_license_valid(current_user.id)
     engine = TradingEngine(current_user.id)
     account_summary = engine.get_account_summary()
     preferences = TradingPreference.query.filter_by(user_id=current_user.id).first()
+    broker_account = BrokerAccount.query.filter_by(user_id=current_user.id).first()
 
     return render_template(
         "mobile_home.html",
@@ -36,6 +37,7 @@ def home():
         license=license_info if is_valid else None,
         account_summary=account_summary,
         preferences=preferences,
+        broker_account=broker_account,
         active_page="home",
     )
 
@@ -94,6 +96,10 @@ def quotes():
     lot_sizes = preferences.strategy_settings.get("lot_sizes", {}) if preferences.strategy_settings else {}
     direction_prefs = preferences.direction_preferences if preferences.direction_preferences else {}
 
+    from ..models import BrokerAccount
+    broker_acct = BrokerAccount.query.filter_by(user_id=current_user.id, is_connected=True).first()
+    active_platform = broker_acct.platform if broker_acct else "MT5"
+
     for pair in available_pairs:
         symbols.append(
             {
@@ -101,7 +107,7 @@ def quotes():
                 "enabled": pair in (preferences.currency_pairs or []),
                 "lot_size": lot_sizes.get(pair, DEFAULT_LOT_SIZES.get(pair, 0.01)),
                 "direction": direction_prefs.get(pair, "BOTH"),
-                "platform": "PAPER",
+                "platform": active_platform,
             }
         )
 
@@ -113,31 +119,8 @@ def quotes():
 @mobile_bp.route("/metatrader", methods=["GET", "POST"])
 @login_required
 def metatrader():
-    """Paper-trading status screen; broker accounts cannot be linked."""
-    from ..extensions import db
-    from ..models import TradingPreference
-
-    platform = request.args.get("platform", "mt5")
-
-    preferences = TradingPreference.query.filter_by(user_id=current_user.id).first()
-    if not preferences:
-        preferences = TradingPreference()  # type: ignore
-        preferences.user_id = current_user.id
-        db.session.add(preferences)
-        db.session.commit()
-
-    if request.method == "POST":
-        flash("Broker account linking is unavailable while Paper Trading is enabled.", "info")
-        return redirect(url_for("mobile.metatrader"))
-
-    return render_template(
-        "mobile_metatrader.html",
-        preferences=preferences,
-        platform=platform,
-        is_connected=False,
-        common_servers=[],
-        active_page="metatrader",
-    )
+    """Direct users to the MT4/MT5 broker connection interface."""
+    return redirect(url_for("mobile.connect_broker"))
 
 
 @mobile_bp.route("/history")
@@ -233,7 +216,8 @@ def connect_broker():
     from ..extensions import db
     from ..models import BrokerAccount, utcnow
     from ..services.broker_bridge import (
-        BrokerError,
+        BrokerConnectionError,
+        BrokerValidationError,
         encrypt_broker_password,
         verify_and_connect,
     )
@@ -249,35 +233,41 @@ def connect_broker():
                 flash("Broker account disconnected successfully.", "info")
             return redirect(url_for("mobile.connect_broker"))
 
-        platform = request.form.get("platform", "MT5").strip().upper()
-        server = request.form.get("server", "").strip()
-        login = request.form.get("login", "").strip()
-        password = request.form.get("password", "").strip()
+        # Thoroughly strip all leading and trailing whitespace from input credentials
+        platform = str(request.form.get("platform", "MT5") or "").strip().upper()
+        server = str(request.form.get("server", "") or "").strip()
+        login = str(request.form.get("login", "") or "").strip()
+        password = str(request.form.get("password", "") or "").strip()
 
         if platform not in {"MT4", "MT5"}:
-            flash("Please select MetaTrader 4 or MetaTrader 5.", "error")
+            flash("Please select MetaTrader 4 (MT4) or MetaTrader 5 (MT5).", "error")
             return render_template("mobile_connect_broker.html", broker_account=broker_account, active_page="profile")
 
         if not server or len(server) < 3:
-            flash("Please enter a valid broker server name.", "error")
+            flash("Please enter a valid broker server name (e.g. IFXBrokersHoldings-Demo, Deriv-Server).", "error")
             return render_template("mobile_connect_broker.html", broker_account=broker_account, active_page="profile")
 
         if not login or not login.isdigit():
-            flash("Please enter a valid numeric account login ID.", "error")
+            flash(f"Invalid account login ID '{login}'. Account ID must contain only numeric digits.", "error")
             return render_template("mobile_connect_broker.html", broker_account=broker_account, active_page="profile")
 
         if not password or len(password) < 3:
-            flash("Please enter your broker account password.", "error")
+            flash("Please enter your broker account password (minimum 3 characters).", "error")
             return render_template("mobile_connect_broker.html", broker_account=broker_account, active_page="profile")
 
         try:
             verify_and_connect(platform=platform, server=server, login=login, password=password)
-        except BrokerError as exc:
-            flash(f"Connection verification failed: {exc}", "error")
+        except BrokerValidationError as exc:
+            current_app.logger.warning("Broker validation failed for user %s: %s", current_user.id, exc)
+            flash(f"Broker Validation Error: {exc}", "error")
+            return render_template("mobile_connect_broker.html", broker_account=broker_account, active_page="profile")
+        except BrokerConnectionError as exc:
+            current_app.logger.warning("Broker authentication rejected for user %s on %s: %s", current_user.id, server, exc)
+            flash(f"Broker Authentication Failed: {exc}", "error")
             return render_template("mobile_connect_broker.html", broker_account=broker_account, active_page="profile")
         except Exception as exc:
-            current_app.logger.exception("Failed to connect broker for user %s", current_user.id)
-            flash(f"Connection error: {exc}", "error")
+            current_app.logger.exception("Diagnostic connection failure for user %s on %s", current_user.id, server)
+            flash(f"Connection Diagnostic Error: {exc}", "error")
             return render_template("mobile_connect_broker.html", broker_account=broker_account, active_page="profile")
 
         if not broker_account:

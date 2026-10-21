@@ -1,19 +1,27 @@
 {% extends "base.html" %}
 {% from "_components.html" import empty_state, lifecycle, metric, status_badge %}
-{% block title %}Paper Trading Dashboard · SpaceTradingFX{% endblock %}
+{% block title %}Live Broker Dashboard · SpaceTradingFX{% endblock %}
 {% block content %}
 <section class="card" aria-labelledby="dashboard-title">
-  <p class="eyebrow">Simulation workspace</p>
-  <h1 id="dashboard-title">Paper trading dashboard</h1>
-  <p>All prices, positions, and results are simulated. No broker orders or live funds are involved.</p>
-  <p class="help">License: {{ license.license_type|upper }} · expires {{ license.expires_at.strftime('%d %b %Y') if license and license.expires_at else 'Not available' }}</p>
+  <p class="eyebrow">Institutional Broker Execution</p>
+  <h1 id="dashboard-title">Live & Demo Trading Dashboard</h1>
+  {% if broker_account and broker_account.is_connected %}
+  <div class="alert alert-success">
+    <strong>Connected Broker:</strong> {{ broker_account.server }} ({{ broker_account.platform }}) · Account ID: #{{ broker_account.account_login }}
+  </div>
+  {% else %}
+  <div class="alert alert-warning">
+    <strong>No Broker Connected:</strong> Execution is halted. <a href="{{ url_for('mobile.connect_broker') }}" style="font-weight: 800; text-decoration: underline;">Connect your IFX Brokers or Deriv account</a> to activate live/demo execution.
+  </div>
+  {% endif %}
+  <p class="help">License: {{ license.license_type|upper }} · expires {{ license.expires_at.strftime('%d %b %Y') if license and license.expires_at else 'Active' }}</p>
 </section>
 
-<section class="metrics" aria-label="Paper trading summary">
-  {{ metric('Paper trades', account_summary.total_trades, 'Simulation ledger') }}
-  {{ metric('Open positions', account_summary.active_trades, 'Paper positions only', 'info') }}
-  {{ metric('Win rate', '%.1f%%'|format(account_summary.win_rate), 'Closed paper trades') }}
-  {{ metric('Paper P/L', 'SIM %.2f'|format(account_summary.total_profit), 'USD-assumed simulated units; not a cash balance', 'success' if account_summary.total_profit >= 0 else 'danger') }}
+<section class="metrics" aria-label="Trading summary">
+  {{ metric('Total Trades', account_summary.total_trades, 'Execution ledger') }}
+  {{ metric('Open Positions', account_summary.active_trades, 'Active market orders', 'info') }}
+  {{ metric('Win Rate', '%.1f%%'|format(account_summary.win_rate), 'Closed broker trades') }}
+  {{ metric('Total P/L', '$%.2f'|format(account_summary.total_profit), 'Realized broker net P/L', 'success' if account_summary.total_profit >= 0 else 'danger') }}
 </section>
 
 {% if account_summary.tear_sheet and account_summary.total_trades > 0 %}
@@ -26,49 +34,48 @@
 {% endif %}
 
 <section class="card" aria-labelledby="controls-title">
-  <p class="eyebrow">Step 1</p><h2 id="controls-title">Prepare your simulation</h2>
-  <p class="help">{{ market_data_label }} Treat every result as educational, not investment advice.</p>
-  <p><a class="button" href="{{ url_for('trading.analyze_markets') }}">Analyze configured paper data</a> <a class="button button--secondary" href="{{ url_for('trading.preferences') }}">Review risk settings</a></p>
+  <p class="eyebrow">Market Operations</p><h2 id="controls-title">Execution Controls</h2>
+  <p class="help">{{ market_data_label }}</p>
+  <p><a class="button" href="{{ url_for('trading.analyze_markets') }}">Scan Market Signals</a> <a class="button button--secondary" href="{{ url_for('trading.preferences') }}">Review Risk Settings</a> <a class="button button--secondary" href="{{ url_for('mobile.connect_broker') }}">Manage Broker</a></p>
 </section>
 
 <section class="card" aria-labelledby="trades-title">
-  <p class="eyebrow">Paper order lifecycle</p><h2 id="trades-title">Open paper positions</h2>
+  <p class="eyebrow">Order Lifecycle</p><h2 id="trades-title">Open Broker Positions</h2>
   {{ lifecycle('Open') }}
   {% if account_summary.trades %}
   <div class="table-wrap"><table>
-    <caption class="help">Open simulated positions. Close actions only update the paper ledger.</caption>
-    <thead><tr><th>Symbol</th><th>Side</th><th>Entry</th><th>Volume</th><th>Paper P/L</th><th>Opened</th><th><span class="sr-only">Action</span></th></tr></thead>
+    <caption class="help">Live market positions on connected broker account.</caption>
+    <thead><tr><th>Symbol</th><th>Side</th><th>Entry</th><th>Volume</th><th>P/L</th><th>Opened</th><th><span class="sr-only">Action</span></th></tr></thead>
     <tbody>{% for trade in account_summary.trades %}<tr>
-      <td><strong>{{ trade.currency_pair }}</strong><br><span class="help">Simulation</span></td>
+      <td><strong>{{ trade.currency_pair }}</strong></td>
       <td>{{ status_badge(trade.trade_type, 'success' if trade.trade_type == 'BUY' else 'danger') }}</td>
       <td>{{ '%.5f'|format(trade.entry_price) }}</td><td>{{ trade.lot_size }}</td>
-      <td>{{ 'SIM %.2f'|format(trade.profit_loss) }}</td><td>{{ trade.opened_at.strftime('%d %b, %H:%M') }}</td>
-      <td><form method="post" action="{{ url_for('trading.close_trade', trade_id=trade.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="button button--danger" type="submit">Close paper trade</button></form></td>
+      <td>${{ '%.2f'|format(trade.profit_loss) }}</td><td>{{ trade.opened_at.strftime('%d %b, %H:%M') }}</td>
+      <td><form method="post" action="{{ url_for('trading.close_trade', trade_id=trade.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="button button--danger" type="submit">Close Position</button></form></td>
     </tr>{% endfor %}</tbody>
   </table></div>
-  {% else %}{{ empty_state('No open paper trades', 'Run market analysis, review the risk settings, then create a simulated trade when you are ready.', url_for('trading.preferences'), 'Configure paper trading') }}{% endif %}
+  {% else %}{{ empty_state('No open positions', 'Run market analysis, verify your broker connection, and submit a trade.', url_for('trading.preferences'), 'Review Risk Controls') }}{% endif %}
 </section>
 
 <section class="card" aria-labelledby="order-title">
-  <p class="eyebrow">Step 2</p><h2 id="order-title">Create a paper trade</h2>
-  <div class="alert alert-warning"><strong>Risk disclosure:</strong> this creates a simulated position only. It cannot place, modify, or cancel an external broker order.</div>
+  <p class="eyebrow">Order Dispatch</p><h2 id="order-title">Execute Broker Trade</h2>
   <form method="post" action="{{ url_for('trading.manual_trade') }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <div class="grid"><div class="form-group"><label for="currency_pair">Symbol</label><select id="currency_pair" name="currency_pair" required>{% for pair in (preferences.currency_pairs if preferences and preferences.currency_pairs else ['EURUSD', 'GBPUSD', 'USDJPY']) %}<option value="{{ pair }}">{{ pair[:3] }}/{{ pair[3:] }}</option>{% endfor %}</select><p class="help">Only configured paper symbols are accepted.</p></div>
-    <div class="form-group"><label for="trade_type">Direction</label><select id="trade_type" name="trade_type" required><option value="BUY">Buy (simulated long)</option><option value="SELL">Sell (simulated short)</option></select><p class="help">Validation applies your configured risk limits.</p></div></div>
-    <button class="button" type="submit">Create paper trade</button>
+    <div class="grid"><div class="form-group"><label for="currency_pair">Symbol</label><select id="currency_pair" name="currency_pair" required>{% for pair in (preferences.currency_pairs if preferences and preferences.currency_pairs else ['EURUSD', 'GBPUSD', 'USDJPY']) %}<option value="{{ pair }}">{{ pair[:3] }}/{{ pair[3:] }}</option>{% endfor %}</select><p class="help">Supported trading symbols.</p></div>
+    <div class="form-group"><label for="trade_type">Direction</label><select id="trade_type" name="trade_type" required><option value="BUY">BUY (Long)</option><option value="SELL">SELL (Short)</option></select><p class="help">Orders will execute on your connected IFX Brokers or Deriv account.</p></div></div>
+    <button class="button" type="submit">Execute Trade</button>
   </form>
 </section>
 
 <section class="card" aria-labelledby="signals-title">
-  <p class="eyebrow">Market data</p><h2 id="signals-title">Recent simulated signals</h2>
-  <p class="help">{{ market_data_label }} Unavailable data is never substituted as a quote.</p>
-  {% if recent_signals %}<div class="table-wrap"><table><thead><tr><th>Symbol</th><th>Signal</th><th>Strength</th><th>Price</th><th>Timeframe</th><th>Generated</th></tr></thead><tbody>{% for signal in recent_signals %}<tr><td>{{ signal.currency_pair }}</td><td>{{ status_badge(signal.signal_type, 'success' if signal.signal_type == 'BUY' else 'danger' if signal.signal_type == 'SELL' else 'neutral') }}</td><td>{{ '%.0f%%'|format(signal.strength) }}</td><td>{{ '%.5f'|format(signal.price) }}</td><td>{{ signal.timeframe }}</td><td>{{ signal.created_at.strftime('%d %b, %H:%M') }}</td></tr>{% endfor %}</tbody></table></div>{% else %}{{ empty_state('No paper signals yet', 'Analyze the configured paper market to generate a transparent signal.', url_for('trading.analyze_markets'), 'Analyze configured paper data') }}{% endif %}
+  <p class="eyebrow">Market Data</p><h2 id="signals-title">Recent Signals</h2>
+  <p class="help">{{ market_data_label }}</p>
+  {% if recent_signals %}<div class="table-wrap"><table><thead><tr><th>Symbol</th><th>Signal</th><th>Strength</th><th>Price</th><th>Timeframe</th><th>Generated</th></tr></thead><tbody>{% for signal in recent_signals %}<tr><td>{{ signal.currency_pair }}</td><td>{{ status_badge(signal.signal_type, 'success' if signal.signal_type == 'BUY' else 'danger' if signal.signal_type == 'SELL' else 'neutral') }}</td><td>{{ '%.0f%%'|format(signal.strength) }}</td><td>{{ '%.5f'|format(signal.price) }}</td><td>{{ signal.timeframe }}</td><td>{{ signal.created_at.strftime('%d %b, %H:%M') }}</td></tr>{% endfor %}</tbody></table></div>{% else %}{{ empty_state('No signals yet', 'Analyze markets to scan for trade opportunities.', url_for('trading.analyze_markets'), 'Scan Markets') }}{% endif %}
 </section>
 
 <section class="card" aria-labelledby="activity-title">
-  <p class="eyebrow">Account trust</p><h2 id="activity-title">Recent account activity</h2>
-  <p class="help">This timeline records account, license, verified-payment, and paper-trade actions. Sensitive payment and broker details are never displayed.</p>
-  {% if recent_activity %}<div class="table-wrap"><table><thead><tr><th>Activity</th><th>When</th></tr></thead><tbody>{% for event in recent_activity %}<tr><td>{{ event.action|replace('.', ' ')|title }}</td><td>{{ event.created_at.strftime('%d %b %Y, %H:%M') }}</td></tr>{% endfor %}</tbody></table></div>{% else %}{{ empty_state('No activity yet', 'Security and paper-trading events will appear here as you use the dashboard.') }}{% endif %}
+  <p class="eyebrow">Audit Trail</p><h2 id="activity-title">Recent Account Activity</h2>
+  <p class="help">Timeline of account, license, broker, and execution events.</p>
+  {% if recent_activity %}<div class="table-wrap"><table><thead><tr><th>Activity</th><th>When</th></tr></thead><tbody>{% for event in recent_activity %}<tr><td>{{ event.action|replace('.', ' ')|title }}</td><td>{{ event.created_at.strftime('%d %b %Y, %H:%M') }}</td></tr>{% endfor %}</tbody></table></div>{% else %}{{ empty_state('No activity yet', 'Events will appear here as orders execute.') }}{% endif %}
 </section>
 {% endblock %}

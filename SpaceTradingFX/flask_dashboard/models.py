@@ -129,16 +129,19 @@ class TradingPreference(db.Model):
 class Trade(db.Model):
     __tablename__ = "trades"
     __table_args__ = (
-        # Idempotency belongs to a caller's ledger, not the whole product.  A
+        # Idempotency belongs to a caller's ledger, not the whole product. A
         # client retry key from one account must not reject another account's
-        # otherwise valid paper order.
+        # otherwise valid order.
         UniqueConstraint("user_id", "idempotency_key", name="uq_trades_user_idempotency_key"),
+        UniqueConstraint("broker_order_id", name="uq_trades_broker_order_id"),
         CheckConstraint(
             "status IN ('draft', 'validated', 'open', 'closing', 'closed', 'rejected', 'failed')",
             name="ck_trades_status",
         ),
         CheckConstraint("trade_type IN ('BUY', 'SELL')", name="ck_trades_direction"),
-        CheckConstraint("execution_mode = 'paper'", name="ck_trades_paper_only"),
+        CheckConstraint(
+            "execution_mode IN ('broker', 'live', 'demo', 'paper')", name="ck_trades_execution_mode"
+        ),
         CheckConstraint(
             "reconciliation_state IN ('pending', 'reconciled', 'exception')", name="ck_trades_reconciliation_state"
         ),
@@ -157,12 +160,10 @@ class Trade(db.Model):
     take_profit = db.Column(Numeric(20, 10), nullable=True)
     status = db.Column(db.String(32), default="draft", nullable=False)
     profit_loss = db.Column(Numeric(18, 2), default=0, nullable=False)
-    execution_mode = db.Column(db.String(20), default="paper", nullable=False)
+    execution_mode = db.Column(db.String(20), default="broker", nullable=False)
     idempotency_key = db.Column(db.String(64), nullable=True)
-    # Retained for migration compatibility only.  Paper-only code never sets
-    # these fields and no broker response is accepted by the application.
     mt5_ticket = db.Column(db.String(50), nullable=True)
-    broker_order_id = db.Column(db.String(100), unique=True, nullable=True)
+    broker_order_id = db.Column(db.String(100), nullable=True)
     broker_response = db.Column(db.JSON, nullable=True)
     reconciliation_state = db.Column(db.String(20), default="pending", nullable=False)
     last_reconciled_at = db.Column(db.DateTime(timezone=True), nullable=True)

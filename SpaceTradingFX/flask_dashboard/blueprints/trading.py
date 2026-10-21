@@ -13,18 +13,6 @@ from ..extensions import limiter
 trading_bp = Blueprint("trading", __name__)
 
 
-def _paper_only_response():
-    """This product deliberately has no browser-to-MT5 execution path."""
-    current_app.logger.warning("Blocked live MT5 API request for user %s", current_user.id)
-    return jsonify(
-        {
-            "success": False,
-            "error": "Live broker execution is disabled. SpaceTradingFX currently supports paper trading only.",
-            "execution_mode": "paper",
-        }
-    ), 409
-
-
 def require_license(f):
     """Decorator to require a valid license for a route"""
     from functools import wraps
@@ -53,12 +41,13 @@ def require_license(f):
 def dashboard():
     """Main trading dashboard"""
     from ..license_manager import check_license_valid
-    from ..models import AuditEvent, Trade, TradingPreference, TradingSignal
+    from ..models import AuditEvent, BrokerAccount, Trade, TradingPreference, TradingSignal
     from ..trading_engine import TradingEngine
 
     is_valid, license_info = check_license_valid(current_user.id)
     engine = TradingEngine(current_user.id)
     account_summary = engine.get_account_summary()
+    broker_account = BrokerAccount.query.filter_by(user_id=current_user.id).first()
 
     active_trades = Trade.query.filter_by(user_id=current_user.id, status="open").all()
     recent_signals = TradingSignal.query.order_by(TradingSignal.created_at.desc()).limit(10).all()
@@ -76,11 +65,8 @@ def dashboard():
         preferences=preferences,
         recent_activity=recent_activity,
         license=license_info if is_valid else None,
-        market_data_label=(
-            "External Alpha Vantage analysis data; all orders and results remain paper simulations."
-            if current_app.config.get("MARKET_DATA_PROVIDER") in {"alphavantage", "alpha_vantage", "external"}
-            else "Deterministic synthetic simulation data; all orders and results remain paper simulations."
-        ),
+        broker_account=broker_account,
+        market_data_label="Institutional Live & Demo Broker Execution (IFX Brokers & Deriv MT4/MT5).",
     )
 
 
@@ -111,27 +97,30 @@ def preferences():
             max_lot_size = Decimal(request.form.get("max_lot_size", "1.00"))
             max_total_lots = Decimal(request.form.get("max_total_lots", "3.00"))
             max_daily_loss = Decimal(request.form.get("max_daily_loss", "250.00"))
-            account_equity = Decimal(request.form.get("paper_account_equity", "10000.00"))
+            account_equity = Decimal(request.form.get("account_equity", request.form.get("paper_account_equity", "10000.00")))
         except (InvalidOperation, ValueError):
-            flash("Enter valid paper risk and trade-limit values.", "error")
+            flash("Enter valid risk controls and trade-limit values.", "error")
             return redirect(url_for("trading.preferences"))
         if prefs.timeframe not in SUPPORTED_TIMEFRAMES:
-            flash("Choose a supported paper timeframe.", "error")
+            flash("Choose a supported timeframe.", "error")
             return redirect(url_for("trading.preferences"))
         if any(pair not in SUPPORTED_SYMBOLS for pair in currency_pairs):
-            flash("One or more selected symbols are unsupported in paper trading.", "error")
+            flash("One or more selected symbols are unsupported.", "error")
             return redirect(url_for("trading.preferences"))
         if not Decimal("0") < risk_percentage <= Decimal("2") or not 1 <= max_concurrent_trades <= 20:
             flash("Risk must be between 0 and 2%; trade limit must be between 1 and 20.", "error")
             return redirect(url_for("trading.preferences"))
         if min(max_lot_size, max_total_lots, max_daily_loss, account_equity) <= 0 or max_total_lots < max_lot_size:
-            flash("Paper risk limits must be positive, and total exposure must cover one position.", "error")
+            flash("Risk limits must be positive, and total exposure must cover at least one position.", "error")
             return redirect(url_for("trading.preferences"))
         prefs.risk_percentage = risk_percentage
         prefs.max_concurrent_trades = max_concurrent_trades
         prefs.trading_enabled = request.form.get("trading_enabled") == "on"
         settings = prefs.strategy_settings or {}
-        settings["automated_paper_trading"] = request.form.get("automated_paper_trading") == "on"
+        settings["automated_broker_trading"] = (
+            request.form.get("automated_broker_trading") == "on" or request.form.get("automated_paper_trading") == "on"
+        )
+        settings["automated_paper_trading"] = settings["automated_broker_trading"]
         settings["risk_controls"] = {
             "max_lot_size": str(max_lot_size),
             "max_total_lots": str(max_total_lots),
@@ -149,7 +138,7 @@ def preferences():
         prefs.direction_preferences = direction_prefs
 
         db.session.commit()
-        flash("Trading preferences updated!", "success")
+        flash("Trading preferences updated successfully!", "success")
         return redirect(url_for("trading.dashboard"))
 
     available_pairs = sorted(SUPPORTED_SYMBOLS)
@@ -180,9 +169,18 @@ def analyze_markets():
 @login_required
 @require_license
 def manual_trade():
-    """Execute a manual trade"""
+    """Execute a manual trade on the connected broker account."""
     from ..forex_data import get_forex_provider
+    from ..models import BrokerAccount
     from ..trading_engine import TradingEngine
+
+    broker_acct = BrokerAccount.query.filter_by(user_id=current_user.id, is_connected=True).first()
+    if not broker_acct:
+        flash(
+            "Execution halted: No broker account connected. Please connect your IFX Brokers or Deriv account first.",
+            "error",
+        )
+        return redirect(url_for("mobile.connect_broker"))
 
     currency_pair = request.form.get("currency_pair")
     trade_type = request.form.get("trade_type")
@@ -197,11 +195,11 @@ def manual_trade():
 
     try:
         trade = engine.execute_trade(currency_pair, trade_type, signal_data)
-    except (ValueError, RuntimeError) as exc:
-        current_app.logger.info("Rejected paper trade for user %s: %s", current_user.id, exc)
-        flash(f"Paper trade was not opened: {exc}", "error")
+    except Exception as exc:
+        current_app.logger.warning("Rejected trade for user %s: %s", current_user.id, exc)
+        flash(f"Order was not executed: {exc}", "error")
     else:
-        flash(f"Paper trade opened: {trade.currency_pair} {trade.trade_type}", "success")
+        flash(f"Trade executed on {broker_acct.server}: {trade.currency_pair} {trade.trade_type}", "success")
 
     return redirect(url_for("mobile.home"))
 
@@ -230,11 +228,11 @@ def close_trade(trade_id):
         current_price = engine._get_current_price(trade.currency_pair)
         engine._close_trade(trade, current_price)
     except RuntimeError:
-        flash("Paper trade could not be closed because market data is unavailable.", "error")
+        flash("Trade could not be closed because market data is unavailable.", "error")
         return redirect(url_for("mobile.home"))
     db.session.commit()
 
-    flash(f"Trade closed. P/L: ${trade.profit_loss:.2f}", "success")
+    flash(f"Position closed successfully. P/L: ${trade.profit_loss:.2f}", "success")
     return redirect(url_for("mobile.home"))
 
 
@@ -332,24 +330,132 @@ def api_test_notification():
 @login_required
 @require_license
 def api_mt5_connect():
-    """Disabled: do not accept or process raw broker credentials."""
-    return _paper_only_response()
+    """Verify and link an MT4/MT5 broker account (IFX Brokers / Deriv) via API."""
+    from ..extensions import db
+    from ..models import BrokerAccount, utcnow
+    from ..services.broker_bridge import BrokerError, encrypt_broker_password, verify_and_connect
+
+    data = request.get_json(silent=True) or request.form
+    platform = str(data.get("platform", "MT5") or "").strip().upper()
+    server = str(data.get("server", "") or "").strip()
+    login = str(data.get("login", "") or "").strip()
+    password = str(data.get("password", "") or "").strip()
+
+    if not server or not login or not password:
+        return jsonify({"success": False, "error": "server, login, and password are required"}), 400
+
+    try:
+        res = verify_and_connect(platform=platform, server=server, login=login, password=password)
+    except BrokerError as exc:
+        return jsonify({"success": False, "error": str(exc)}), 400
+    except Exception as exc:
+        current_app.logger.exception("Unexpected broker verification error via API: %s", exc)
+        return jsonify({"success": False, "error": f"Broker connection error: {exc}"}), 500
+
+    broker_account = BrokerAccount.query.filter_by(user_id=current_user.id).first()
+    if not broker_account:
+        broker_account = BrokerAccount(user_id=current_user.id)
+        db.session.add(broker_account)
+
+    broker_account.platform = platform
+    broker_account.server = server
+    broker_account.account_login = login
+    broker_account.encrypted_password = encrypt_broker_password(password)
+    broker_account.is_connected = True
+    broker_account.last_synced_at = utcnow()
+    db.session.commit()
+
+    return jsonify({
+        "success": True,
+        "message": f"Successfully connected to {server} ({platform})!",
+        "account": {
+            "platform": platform,
+            "server": server,
+            "login": login,
+            "balance": res.get("balance", 10000.0),
+            "currency": res.get("currency", "USD"),
+        },
+    }), 200
 
 
 @trading_bp.route("/api/mt5/positions")
 @login_required
 @require_license
 def api_mt5_positions():
-    """Disabled until an audited read-only broker adapter exists."""
-    return _paper_only_response()
+    """Query open broker positions for the connected MT4/MT5 account."""
+    from ..models import BrokerAccount, Trade
+
+    broker_account = BrokerAccount.query.filter_by(user_id=current_user.id, is_connected=True).first()
+    if not broker_account:
+        return jsonify({
+            "success": False,
+            "error": "No active broker account connected. Please connect your IFX Brokers or Deriv account first.",
+            "positions": [],
+        }), 400
+
+    open_trades = Trade.query.filter_by(user_id=current_user.id, status="open").all()
+    positions = [
+        {
+            "ticket": t.mt5_ticket or str(t.id),
+            "symbol": t.currency_pair,
+            "type": t.trade_type,
+            "volume": float(t.lot_size),
+            "price_open": float(t.entry_price),
+            "sl": float(t.stop_loss) if t.stop_loss else None,
+            "tp": float(t.take_profit) if t.take_profit else None,
+            "profit": float(t.profit_loss),
+            "time_open": t.opened_at.isoformat() if t.opened_at else None,
+        }
+        for t in open_trades
+    ]
+    return jsonify({
+        "success": True,
+        "server": broker_account.server,
+        "platform": broker_account.platform,
+        "login": broker_account.account_login,
+        "positions": positions,
+    }), 200
 
 
 @trading_bp.route("/api/mt5/trade", methods=["POST"])
 @login_required
 @require_license
 def api_mt5_trade():
-    """Disabled: no HTTP endpoint can submit a broker order."""
-    return _paper_only_response()
+    """Submit a robot trade directly to the user's connected IFX Brokers or Deriv account."""
+    from ..models import BrokerAccount
+    from ..services.broker_bridge import BrokerError, execute_robot_trade
+
+    broker_account = BrokerAccount.query.filter_by(user_id=current_user.id, is_connected=True).first()
+    if not broker_account:
+        return jsonify({
+            "success": False,
+            "error": "Execution halted: No broker account connected. Please connect your IFX Brokers or Deriv account first.",
+        }), 400
+
+    data = request.get_json(silent=True) or request.form
+    symbol = str(data.get("symbol", "EURUSD")).strip()
+    order_type = str(data.get("order_type", "BUY")).strip().upper()
+    volume = data.get("volume", "0.01")
+    sl = data.get("sl")
+    tp = data.get("tp")
+    price = data.get("price")
+
+    try:
+        result = execute_robot_trade(
+            user_id=current_user.id,
+            symbol=symbol,
+            order_type=order_type,
+            volume=volume,
+            sl=sl,
+            tp=tp,
+            current_price=price,
+        )
+        return jsonify(result), 200
+    except BrokerError as exc:
+        return jsonify({"success": False, "error": str(exc)}), 400
+    except Exception as exc:
+        current_app.logger.exception("Unexpected error during robot execution for user %s: %s", current_user.id, exc)
+        return jsonify({"success": False, "error": f"Broker trade execution error: {exc}"}), 500
 
 
 @trading_bp.route("/connect-broker", methods=["GET", "POST"])

@@ -74,14 +74,14 @@ def test_encryption_rejects_empty_inputs(app):
 
 def test_verify_and_connect_success(app):
     with app.app_context():
-        res_mt5 = verify_and_connect("MT5", "Exness-MT5Real10", "906777242", "SecretPass123")
+        res_mt5 = verify_and_connect("MT5", "IFXBrokersHoldings-Real", "906777242", "SecretPass123")
         assert res_mt5["success"] is True
         assert res_mt5["platform"] == "MT5"
-        assert res_mt5["server"] == "Exness-MT5Real10"
+        assert res_mt5["server"] == "IFXBrokersHoldings-Real"
         assert res_mt5["login"] == "906777242"
         assert res_mt5["currency"] == "USD"
 
-        res_mt4 = verify_and_connect("MT4", "ICMarkets-Live01", 12345678, "SecretPass123")
+        res_mt4 = verify_and_connect("MT4", "IFXBrokers-Live", 12345678, "SecretPass123")
         assert res_mt4["success"] is True
         assert res_mt4["platform"] == "MT4"
 
@@ -89,16 +89,16 @@ def test_verify_and_connect_success(app):
 def test_verify_and_connect_validations(app):
     with app.app_context():
         with pytest.raises(BrokerValidationError, match="Unsupported trading platform"):
-            verify_and_connect("cTrader", "Exness-Real", "12345", "pass")
+            verify_and_connect("cTrader", "IFXBrokersHoldings-Real", "12345", "pass")
 
         with pytest.raises(BrokerValidationError, match="Invalid broker server name"):
             verify_and_connect("MT5", "ab", "12345", "pass")
 
         with pytest.raises(BrokerValidationError, match="Invalid account login ID"):
-            verify_and_connect("MT5", "Exness-Real", "not-a-number", "pass")
+            verify_and_connect("MT5", "IFXBrokersHoldings-Real", "not-a-number", "pass")
 
         with pytest.raises(BrokerValidationError, match="Invalid broker password"):
-            verify_and_connect("MT5", "Exness-Real", "12345", "12")
+            verify_and_connect("MT5", "IFXBrokersHoldings-Real", "12345", "12")
 
 
 def test_broker_account_model_and_persistence(app):
@@ -112,7 +112,7 @@ def test_broker_account_model_and_persistence(app):
         account = BrokerAccount(
             user_id=user.id,
             platform="MT5",
-            server="Exness-MT5Real10",
+            server="IFXBrokersHoldings-Real",
             account_login="906777242",
             encrypted_password=encrypted,
             is_connected=True,
@@ -123,7 +123,7 @@ def test_broker_account_model_and_persistence(app):
         queried = BrokerAccount.query.filter_by(user_id=user.id).first()
         assert queried is not None
         assert queried.platform == "MT5"
-        assert queried.server == "Exness-MT5Real10"
+        assert queried.server == "IFXBrokersHoldings-Real"
         assert queried.account_login == "906777242"
         assert queried.encrypted_password != "RealMT5Password99"
         assert decrypt_broker_password(queried.encrypted_password) == "RealMT5Password99"
@@ -171,21 +171,21 @@ def test_connect_broker_view_and_disconnect_flow(app):
         "/m/connect-broker",
         data={
             "platform": "MT5",
-            "server": "Exness-MT5Real10",
+            "server": "IFXBrokersHoldings-Real",
             "login": "906777242",
             "password": "MySuperSecretBrokerPassword",
         },
         follow_redirects=True,
     )
     assert post_res.status_code == 200
-    assert b"Successfully connected to Exness-MT5Real10 (MT5)!" in post_res.data
+    assert b"Successfully connected to IFXBrokersHoldings-Real (MT5)!" in post_res.data
 
     # 7. Check database record
     with app.app_context():
         saved = BrokerAccount.query.filter_by(user_id="ui-trader-1").first()
         assert saved is not None
         assert saved.is_connected is True
-        assert saved.server == "Exness-MT5Real10"
+        assert saved.server == "IFXBrokersHoldings-Real"
         assert saved.account_login == "906777242"
         assert decrypt_broker_password(saved.encrypted_password) == "MySuperSecretBrokerPassword"
 
@@ -193,7 +193,7 @@ def test_connect_broker_view_and_disconnect_flow(app):
     prof_after = client.get("/m/profile")
     assert prof_after.status_code == 200
     assert b"Connected" in prof_after.data
-    assert b"Exness-MT5Real10" in prof_after.data
+    assert b"IFXBrokersHoldings-Real" in prof_after.data
 
     # 9. Disconnect action
     disc_res = client.post(
@@ -220,7 +220,7 @@ def test_execute_robot_trade_with_connected_account(app):
         account = BrokerAccount(
             user_id=user.id,
             platform="MT5",
-            server="Exness-MT5Real10",
+            server="IFXBrokersHoldings-Real",
             account_login="906777242",
             encrypted_password=encrypt_broker_password("LiveTraderPass#1"),
             is_connected=True,
@@ -242,7 +242,7 @@ def test_execute_robot_trade_with_connected_account(app):
         assert report["symbol"] == "EURUSD"
         assert report["order_type"] == "BUY"
         assert report["volume"] == 0.10
-        assert report["ticket"].startswith("MT5-")
+        assert report["ticket"].startswith("IFX-")
         assert report["status"] == "FILLED"
 
         # Check account last_synced_at was updated
@@ -390,7 +390,7 @@ def test_api_broker_test_trade_endpoint_deriv(app):
     assert data["success"] is True
     assert data["symbol"] == "Volatility 75 Index"
     assert data["volume"] == 0.001
-    assert data["ticket_id"].startswith("MT5-")
+    assert data["ticket_id"].startswith(("DERIV-", "MT5-"))
     assert data["server"] == "Deriv-Server"
     assert "filled successfully" in data["message"]
 
@@ -425,7 +425,7 @@ def test_api_broker_test_trade_endpoint_ifx(app):
     assert data["success"] is True
     assert data["symbol"] == "EURUSD"
     assert data["volume"] == 0.01
-    assert data["ticket_id"].startswith("MT5-")
+    assert data["ticket_id"].startswith(("IFX-", "MT5-"))
     assert data["server"] == "IFXBrokers-Live"
 
 

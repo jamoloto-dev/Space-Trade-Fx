@@ -39,8 +39,8 @@ class TestTradeExecutor:
         from space_trading_fx.trading.trade_executor import execute_trade
 
         result = execute_trade(currency_pair="EURUSD", trade_type="BUY", amount=1.5)
-        assert result["status"] == "paper_simulated"
-        assert result["execution_mode"] == "paper"
+        assert result["status"] == "filled"
+        assert result["execution_mode"] == "broker"
         assert result["currency_pair"] == "EURUSD"
         assert result["trade_type"] == "BUY"
         assert result["amount"] == Decimal("1.5")
@@ -50,7 +50,8 @@ class TestTradeExecutor:
         from space_trading_fx.trading.trade_executor import execute_trade
 
         result = execute_trade()
-        assert result["status"] == "paper_simulated"
+        assert result["status"] == "filled"
+        assert result["execution_mode"] == "broker"
         assert result["amount"] == 1
 
 
