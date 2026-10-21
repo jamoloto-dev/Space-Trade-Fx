@@ -744,6 +744,8 @@ def test_sync_broker_positions_and_live_telemetry(app, client, monkeypatch):
             },
         ]
 
+        monkeypatch.setenv("METAAPI_TOKEN", "mock_metaapi_token_12345")
+        monkeypatch.setenv("METAAPI_ACCOUNT_ID", "mock_metaapi_account_id_999")
         monkeypatch.setattr(
             "flask_dashboard.services.broker_bridge.fetch_metaapi_account_info",
             lambda *args, **kwargs: mock_acc_info,

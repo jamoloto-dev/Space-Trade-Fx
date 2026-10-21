@@ -493,7 +493,7 @@ def fetch_metaapi_positions(
     return None
 
 
-def sync_broker_positions(user_id: str) -> list[Any]:
+def sync_broker_positions(user_id: str, positions: list[dict[str, Any]] | None = None) -> list[Any]:
     """Synchronize open broker positions and real-time floating P/L with MetaApi / DB."""
     from ..extensions import db
     from ..models import BrokerAccount, Trade
@@ -502,10 +502,10 @@ def sync_broker_positions(user_id: str) -> list[Any]:
     if not account:
         return Trade.query.filter_by(user_id=user_id, status="open").all()
 
-    meta_positions = None
-    meta_token = os.environ.get("METAAPI_TOKEN")
-    meta_acc_id = os.environ.get("METAAPI_ACCOUNT_ID")
-    if meta_token and meta_acc_id and not (current_app and current_app.config.get("TESTING")):
+    meta_positions = positions
+    if meta_positions is None and not (current_app and current_app.config.get("TESTING")):
+        meta_token = os.environ.get("METAAPI_TOKEN")
+        meta_acc_id = os.environ.get("METAAPI_ACCOUNT_ID")
         meta_positions = fetch_metaapi_positions(meta_acc_id, meta_token)
 
     if meta_positions is not None:
@@ -608,9 +608,9 @@ def get_broker_telemetry(user_id: str) -> dict[str, Any]:
         }
 
     meta_info = None
-    meta_token = os.environ.get("METAAPI_TOKEN")
-    meta_acc_id = os.environ.get("METAAPI_ACCOUNT_ID")
-    if meta_token and meta_acc_id and not (current_app and current_app.config.get("TESTING")):
+    if not (current_app and current_app.config.get("TESTING")):
+        meta_token = os.environ.get("METAAPI_TOKEN")
+        meta_acc_id = os.environ.get("METAAPI_ACCOUNT_ID")
         meta_info = fetch_metaapi_account_info(meta_acc_id, meta_token)
 
     if meta_info:
