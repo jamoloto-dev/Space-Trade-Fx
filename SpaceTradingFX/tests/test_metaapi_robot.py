@@ -267,3 +267,169 @@ def test_evaluate_market_signal():
     assert "strength" in sig
     assert "confidence" in sig
     assert sig["currency_pair"] in {"EURUSD", "EURUSD.ifx"}
+
+
+def test_monitor_open_positions_empty():
+    mock_conn = MagicMock()
+    mock_conn.get_positions = AsyncMock(return_value=[])
+
+    closed = asyncio.run(
+        metaapi_robot.monitor_open_positions(
+            connection=mock_conn,
+            interval=0.01,
+            max_cycles=1,
+        )
+    )
+    assert closed == []
+    mock_conn.get_positions.assert_awaited_once()
+
+
+def test_monitor_open_positions_logging():
+    mock_conn = MagicMock()
+    mock_conn.get_positions = AsyncMock(
+        return_value=[
+            {
+                "id": "1111",
+                "symbol": "EURUSD.ifx",
+                "type": "POSITION_TYPE_BUY",
+                "volume": 0.02,
+                "openPrice": 1.08500,
+                "currentPrice": 1.08600,
+                "profit": 2.00,
+                "stopLoss": 1.08000,
+                "takeProfit": 1.09000,
+            }
+        ]
+    )
+
+    closed = asyncio.run(
+        metaapi_robot.monitor_open_positions(
+            connection=mock_conn,
+            interval=0.01,
+            max_cycles=1,
+        )
+    )
+    assert closed == []
+    mock_conn.get_positions.assert_awaited_once()
+
+
+def test_monitor_open_positions_tp_sl_dollar():
+    mock_conn = MagicMock()
+    mock_conn.get_positions = AsyncMock(
+        return_value=[
+            {
+                "id": "1001",
+                "symbol": "EURUSD.ifx",
+                "type": "BUY",
+                "volume": 0.01,
+                "openPrice": 1.0850,
+                "currentPrice": 1.0900,
+                "profit": 5.50,
+            },
+            {
+                "id": "1002",
+                "symbol": "GBPUSD.ifx",
+                "type": "BUY",
+                "volume": 0.01,
+                "openPrice": 1.2500,
+                "currentPrice": 1.2400,
+                "profit": -4.20,
+            },
+        ]
+    )
+    mock_conn.close_position = AsyncMock(
+        side_effect=lambda pos_id: {"orderId": f"close_{pos_id}", "numericCode": 10009}
+    )
+
+    closed = asyncio.run(
+        metaapi_robot.monitor_open_positions(
+            connection=mock_conn,
+            interval=0.01,
+            tp_pnl=5.0,
+            sl_pnl=4.0,
+            max_cycles=1,
+        )
+    )
+    assert len(closed) == 2
+    assert closed[0]["position_id"] == "1001"
+    assert "Take-Profit Target Hit" in closed[0]["reason"]
+    assert closed[1]["position_id"] == "1002"
+    assert "Stop-Loss Threshold Hit" in closed[1]["reason"]
+    assert mock_conn.close_position.await_count == 2
+
+
+def test_monitor_open_positions_price_level_breach():
+    mock_conn = MagicMock()
+    mock_conn.get_positions = AsyncMock(
+        return_value=[
+            {
+                "id": "2001",
+                "symbol": "EURUSD.ifx",
+                "type": "BUY",
+                "volume": 0.01,
+                "openPrice": 1.0850,
+                "currentPrice": 1.0790,
+                "stopLoss": 1.0800,
+                "takeProfit": 1.0950,
+                "profit": -6.00,
+            },
+            {
+                "id": "2002",
+                "symbol": "USDJPY.ifx",
+                "type": "SELL",
+                "volume": 0.01,
+                "openPrice": 150.00,
+                "currentPrice": 149.00,
+                "stopLoss": 151.00,
+                "takeProfit": 149.00,
+                "profit": 7.00,
+            },
+        ]
+    )
+    mock_conn.close_position = AsyncMock(return_value={"orderId": "closed_ok", "numericCode": 10009})
+
+    closed = asyncio.run(
+        metaapi_robot.monitor_open_positions(
+            connection=mock_conn,
+            interval=0.01,
+            max_cycles=1,
+        )
+    )
+    assert len(closed) == 2
+    assert closed[0]["position_id"] == "2001"
+    assert "Stop-Loss Level Hit" in closed[0]["reason"]
+    assert closed[1]["position_id"] == "2002"
+    assert "Take-Profit Level Hit" in closed[1]["reason"]
+
+
+def test_monitor_open_positions_resilience():
+    mock_conn = MagicMock()
+    # First call raises an exception, second call succeeds
+    mock_conn.get_positions = AsyncMock(side_effect=[Exception("Transient network timeout"), []])
+
+    closed = asyncio.run(
+        metaapi_robot.monitor_open_positions(
+            connection=mock_conn,
+            interval=0.01,
+            max_cycles=2,
+        )
+    )
+    assert closed == []
+    assert mock_conn.get_positions.await_count == 2
+
+
+def test_monitor_open_positions_stop_event():
+    mock_conn = MagicMock()
+    mock_conn.get_positions = AsyncMock(return_value=[])
+    stop_event = asyncio.Event()
+    stop_event.set()
+
+    closed = asyncio.run(
+        metaapi_robot.monitor_open_positions(
+            connection=mock_conn,
+            interval=1.0,
+            stop_event=stop_event,
+        )
+    )
+    assert closed == []
+    assert mock_conn.get_positions.await_count == 0

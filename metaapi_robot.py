@@ -443,6 +443,132 @@ async def resolve_tradable_symbol(connection, symbol: str) -> str:
     return symbol
 
 
+async def monitor_open_positions(
+    connection,
+    interval: float = 10.0,
+    stop_event: asyncio.Event | None = None,
+    tp_pnl: float | None = None,
+    sl_pnl: float | None = None,
+    max_cycles: int | None = None,
+) -> list[dict[str, Any]]:
+    """Periodically fetch all open positions, log telemetry and P/L, and enforce TP/SL exits."""
+    logger.info("📡 Position monitoring background worker started (interval: %.1fs)...", interval)
+    cycle = 0
+    all_closed: list[dict[str, Any]] = []
+
+    while True:
+        cycle += 1
+        if stop_event and stop_event.is_set():
+            logger.info("Position monitor received stop signal. Exiting worker loop.")
+            break
+
+        try:
+            positions = await connection.get_positions()
+            if not positions:
+                logger.info("📊 [POSITION MONITOR] No open positions currently active on account.")
+            else:
+                logger.info("════════════════════════════════════════════════════════════")
+                logger.info("   📊 OPEN POSITION MONITOR (%d ACTIVE)", len(positions))
+                logger.info("════════════════════════════════════════════════════════════")
+                for pos in positions:
+                    pos_id = str(pos.get("id"))
+                    symbol = pos.get("symbol", "Unknown")
+                    pos_type = pos.get("type", "BUY")
+                    vol = float(pos.get("volume", 0.0))
+                    open_price = float(pos.get("openPrice", 0.0))
+                    curr_price = float(pos.get("currentPrice", open_price))
+                    pnl = float(pos.get("profit", 0.0))
+                    sl = pos.get("stopLoss")
+                    tp = pos.get("takeProfit")
+
+                    action_str = "BUY" if "BUY" in str(pos_type).upper() else "SELL"
+                    pnl_sign = "+" if pnl >= 0 else ""
+                    logger.info(
+                        "  • Ticket #%s: %s %s %.2f lots | Entry: %.5f -> Current: %.5f | P/L: %s$%.2f | SL: %s | TP: %s",
+                        pos_id,
+                        symbol,
+                        action_str,
+                        vol,
+                        open_price,
+                        curr_price,
+                        pnl_sign,
+                        pnl,
+                        f"{float(sl):.5f}" if sl is not None else "None",
+                        f"{float(tp):.5f}" if tp is not None else "None",
+                    )
+
+                    # Target & Risk Enforcement (TP/SL)
+                    should_close = False
+                    close_reason = ""
+
+                    # 1. Floating P/L targets (dollar-based)
+                    if tp_pnl is not None and pnl >= tp_pnl:
+                        should_close = True
+                        close_reason = f"Take-Profit Target Hit: Floating P/L (${pnl:+.2f}) >= Target (+${tp_pnl:.2f})"
+                    elif sl_pnl is not None and pnl <= -abs(sl_pnl):
+                        should_close = True
+                        close_reason = (
+                            f"Stop-Loss Threshold Hit: Floating P/L (${pnl:+.2f}) <= Max Loss (-${abs(sl_pnl):.2f})"
+                        )
+
+                    # 2. Price-level breaches
+                    if not should_close and sl is not None:
+                        sl_val = float(sl)
+                        if (action_str == "BUY" and curr_price <= sl_val) or (
+                            action_str == "SELL" and curr_price >= sl_val
+                        ):
+                            should_close = True
+                            close_reason = f"Stop-Loss Level Hit: Price {curr_price:.5f} breached SL {sl_val:.5f}"
+
+                    if not should_close and tp is not None:
+                        tp_val = float(tp)
+                        if (action_str == "BUY" and curr_price >= tp_val) or (
+                            action_str == "SELL" and curr_price <= tp_val
+                        ):
+                            should_close = True
+                            close_reason = f"Take-Profit Level Hit: Price {curr_price:.5f} reached TP {tp_val:.5f}"
+
+                    if should_close:
+                        logger.info(
+                            "🎯 Initiating automated position close for #%s (%s): %s", pos_id, symbol, close_reason
+                        )
+                        try:
+                            close_res = await connection.close_position(pos_id)
+                            closed_info = {
+                                "position_id": pos_id,
+                                "symbol": symbol,
+                                "reason": close_reason,
+                                "result": close_res,
+                            }
+                            all_closed.append(closed_info)
+                            logger.info(
+                                "✅ Position #%s Successfully Closed via MetaApi RPC! Result: %s",
+                                pos_id,
+                                close_res.get("orderId") or close_res.get("numericCode") or "CLOSED",
+                            )
+                        except Exception as close_err:
+                            logger.error("❌ Failed to close position #%s: %s", pos_id, close_err)
+
+        except Exception as exc:
+            # Resilience: Catch network hiccups and transient errors without crashing
+            logger.warning("Transient notice in position monitoring worker: %s", exc)
+
+        if max_cycles and cycle >= max_cycles:
+            logger.info("Position monitor reached max cycles (%d). Exiting.", max_cycles)
+            break
+
+        if stop_event:
+            try:
+                await asyncio.wait_for(stop_event.wait(), timeout=interval)
+                break
+            except asyncio.TimeoutError:
+                pass
+        else:
+            await asyncio.sleep(interval)
+
+    return all_closed
+
+
 async def execute_market_order(
     connection,
     symbol: str,
@@ -522,6 +648,10 @@ async def run_trading_robot(
     interval_seconds: float = 30.0,
     cooldown_seconds: float = 60.0,
     max_cycles: int | None = None,
+    monitor_positions: bool = True,
+    monitor_interval: float = 10.0,
+    tp_pnl: float | None = None,
+    sl_pnl: float | None = None,
 ) -> None:
     """Core autonomous trading loop: monitor telemetry, evaluate AI signals, manage risk, and trade."""
     token, env_account_id = load_credentials()
@@ -548,6 +678,8 @@ async def run_trading_robot(
     target_symbols = symbols if symbols else [symbol]
     last_trade_time: float = 0.0
     cycle_count = 0
+    stop_event = asyncio.Event()
+    monitor_task = None
 
     try:
         # Step 1: Resolve Account
@@ -579,7 +711,19 @@ async def run_trading_robot(
         await connection.wait_synchronized()
         logger.info("Terminal synchronized successfully.")
 
-        # Step 4: Autonomous Scanning & Execution Loop
+        # Step 4: Launch Concurrent Position Monitoring Worker
+        if monitor_positions:
+            monitor_task = asyncio.create_task(
+                monitor_open_positions(
+                    connection=connection,
+                    interval=monitor_interval,
+                    stop_event=stop_event,
+                    tp_pnl=tp_pnl,
+                    sl_pnl=sl_pnl,
+                )
+            )
+
+        # Step 5: Autonomous Scanning & Execution Loop
         while True:
             cycle_count += 1
             now_utc_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
@@ -587,7 +731,7 @@ async def run_trading_robot(
             logger.info("   AUTONOMOUS SCAN CYCLE #%d [%s]", cycle_count, now_utc_str)
             logger.info("════════════════════════════════════════════════════════════")
 
-            # 4.1. Query Live Account Telemetry (Balance and Equity)
+            # 5.1. Query Live Account Telemetry (Balance and Equity)
             acct_info = await fetch_account_information(connection)
             raw_bal = float(acct_info.get("balance", 0.0))
             credit = float(acct_info.get("credit", 0.0))
@@ -595,7 +739,7 @@ async def run_trading_robot(
             equity = float(acct_info.get("equity", balance))
             free_margin = float(acct_info.get("freeMargin", equity))
 
-            # 4.2. Drawdown Circuit Breaker
+            # 5.2. Drawdown Circuit Breaker
             is_circuit_broken, dd_pct = check_drawdown_circuit_breaker(
                 starting_balance=balance,
                 current_equity=equity,
@@ -608,7 +752,7 @@ async def run_trading_robot(
                 await asyncio.sleep(interval_seconds)
                 continue
 
-            # 4.3. Trade Cooldown Waiting Period (Prevent Over-Trading)
+            # 5.3. Trade Cooldown Waiting Period (Prevent Over-Trading)
             now_ts = time.time()
             elapsed_since_trade = now_ts - last_trade_time
             if last_trade_time > 0 and elapsed_since_trade < cooldown_seconds:
@@ -623,7 +767,7 @@ async def run_trading_robot(
                 await asyncio.sleep(interval_seconds)
                 continue
 
-            # 4.4. Evaluate AI Signals & Strategy across monitored symbols
+            # 5.4. Evaluate AI Signals & Strategy across monitored symbols
             order_executed_this_cycle = False
             for sym in target_symbols:
                 actual_sym = await resolve_tradable_symbol(connection, sym)
@@ -676,7 +820,7 @@ async def run_trading_robot(
                     )
                     continue
 
-                # 4.5. Dynamic Balance-Aware Position Sizing
+                # 5.5. Dynamic Balance-Aware Position Sizing
                 adjusted_risk_pct = risk_pct * float(ai_ctx.get("risk_multiplier", 1.0))
                 try:
                     spec = await connection.get_symbol_specification(actual_sym)
@@ -715,7 +859,7 @@ async def run_trading_robot(
                     logger.warning("Order on %s halted by margin check: %s", actual_sym, margin_reason)
                     continue
 
-                # 4.6. Enforce Stop Loss and Take Profit Brackets
+                # 5.6. Enforce Stop Loss and Take Profit Brackets
                 try:
                     price_info = await connection.get_symbol_price(actual_sym)
                     entry = (
@@ -733,7 +877,7 @@ async def run_trading_robot(
                     calc_sl = round(entry + (sl_pips * pip_size), digits)
                     calc_tp = round(entry - (tp_pips * pip_size), digits)
 
-                # 4.7. Execute Market Order Directly via MetaApi RPC Connection
+                # 5.7. Execute Market Order Directly via MetaApi RPC Connection
                 if execute_order:
                     logger.info(
                         "Dispatched Market Order: %s %s (%.2f lots, SL: %s, TP: %s) via MetaApi RPC...",
@@ -774,6 +918,12 @@ async def run_trading_robot(
         raise
 
     finally:
+        stop_event.set()
+        if monitor_task and not monitor_task.done():
+            try:
+                await asyncio.wait_for(monitor_task, timeout=2.0)
+            except (asyncio.TimeoutError, asyncio.CancelledError):
+                monitor_task.cancel()
         if connection:
             logger.info("Closing RPC connection cleanly...")
             try:
@@ -863,6 +1013,36 @@ def main():
         default=50.0,
         help="Take Profit distance in pips (default: 50.0)",
     )
+    parser.add_argument(
+        "--monitor",
+        action="store_true",
+        default=True,
+        help="Enable automated background open position monitoring (default: True)",
+    )
+    parser.add_argument(
+        "--no-monitor",
+        dest="monitor",
+        action="store_false",
+        help="Disable background open position monitoring",
+    )
+    parser.add_argument(
+        "--monitor-interval",
+        type=float,
+        default=10.0,
+        help="Interval in seconds for background position monitoring (default: 10.0s)",
+    )
+    parser.add_argument(
+        "--tp-pnl",
+        type=float,
+        default=None,
+        help="Floating Take-Profit profit target in dollars to auto-close position (e.g. 5.0 for +$5)",
+    )
+    parser.add_argument(
+        "--sl-pnl",
+        type=float,
+        default=None,
+        help="Floating Stop-Loss loss threshold in dollars to auto-close position (e.g. 3.0 for -$3)",
+    )
 
     args = parser.parse_args()
 
@@ -885,6 +1065,10 @@ def main():
                 loop=args.loop,
                 interval_seconds=args.interval,
                 cooldown_seconds=args.cooldown,
+                monitor_positions=args.monitor,
+                monitor_interval=args.monitor_interval,
+                tp_pnl=args.tp_pnl,
+                sl_pnl=args.sl_pnl,
             )
         )
     except KeyboardInterrupt:
