@@ -160,4 +160,3 @@ def test_user_loader_graceful_handling(app):
         # Database/conversion exceptions caught, logged, and return None safely
         with patch.object(db.session, "get", side_effect=RuntimeError("Simulated DB connection error")):
             assert loader("user-loader-1") is None
-

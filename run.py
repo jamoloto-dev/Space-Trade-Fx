@@ -18,9 +18,9 @@ def main():
     app = create_app()
 
     # Configuration
-    debug = os.environ.get('FLASK_DEBUG', 'True').lower() == 'true'
-    host = os.environ.get('FLASK_HOST', '127.0.0.1')
-    port = int(os.environ.get('FLASK_PORT', 5000))
+    debug = os.environ.get("FLASK_DEBUG", "True").lower() == "true"
+    host = os.environ.get("FLASK_HOST", "127.0.0.1")
+    port = int(os.environ.get("FLASK_PORT", 5000))
 
     print(f"""
 ╔══════════════════════════════════════════════════════════════╗
@@ -28,7 +28,7 @@ def main():
 ║              Automated Forex Trading Platform                ║
 ╠══════════════════════════════════════════════════════════════╣
 ║  Server: http://{host}:{port}                                ║
-║  Mode: {'Development' if debug else 'Production'}                                   ║
+║  Mode: {"Development" if debug else "Production"}                                   ║
 ║  Press Ctrl+C to stop                                        ║
 ╚══════════════════════════════════════════════════════════════╝
 """)
@@ -36,5 +36,5 @@ def main():
     app.run(host=host, port=port, debug=debug)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
