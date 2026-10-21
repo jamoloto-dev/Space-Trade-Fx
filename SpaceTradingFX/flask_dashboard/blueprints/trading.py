@@ -11,6 +11,7 @@ from flask_login import current_user, login_required
 from ..extensions import limiter
 
 trading_bp = Blueprint("trading", __name__)
+CORE_TRADING_PAIRS = ["USDJPY", "GBPUSD", "EURUSD", "XAUUSD", "USDZAR"]
 
 
 def require_license(f):
@@ -153,12 +154,26 @@ def preferences():
     )
 
 
-@trading_bp.route("/analyze-markets")
+@trading_bp.route("/analyze-markets", methods=["GET", "POST"])
 @login_required
 @require_license
 def analyze_markets():
-    """Analyze markets and generate signals"""
+    """Analyze markets and generate signals strictly for ticked core pairs."""
+    from ..extensions import db
+    from ..models import TradingPreference, TradingSignal
     from ..trading_engine import TradingEngine
+
+    preferences = TradingPreference.query.filter_by(user_id=current_user.id).first()
+    raw_pairs = preferences.currency_pairs if (preferences and preferences.currency_pairs) else []
+    selected_pairs = [p for p in raw_pairs if p in CORE_TRADING_PAIRS]
+
+    if not selected_pairs:
+        flash("Please select at least one currency pair in Quotes to analyze.", "warning")
+        return redirect(url_for("mobile.quotes"))
+
+    # Purge existing signals for unticked pairs so only currently ticked pairs appear under ANALYSING
+    TradingSignal.query.filter(~TradingSignal.currency_pair.in_(selected_pairs)).delete(synchronize_session=False)
+    db.session.commit()
 
     engine = TradingEngine(current_user.id)
     signals = engine.analyze_markets()

@@ -59,7 +59,7 @@ def quotes():
     available_pairs = sorted(SUPPORTED_SYMBOLS)
 
     if request.method == "POST":
-        enabled_pairs = request.form.getlist("enabled_pairs")
+        enabled_pairs = [p for p in request.form.getlist("enabled_pairs") if p in SUPPORTED_SYMBOLS]
         preferences.currency_pairs = enabled_pairs
 
         direction_prefs = {}
@@ -97,9 +97,18 @@ def quotes():
     direction_prefs = preferences.direction_preferences if preferences.direction_preferences else {}
 
     from ..models import BrokerAccount
+    from ..services.broker_bridge import is_ifx_server
 
     broker_acct = BrokerAccount.query.filter_by(user_id=current_user.id, is_connected=True).first()
-    active_platform = broker_acct.platform if broker_acct else "MT5"
+    if broker_acct:
+        if is_ifx_server(broker_acct.server):
+            active_platform = f"{broker_acct.platform} (IFX)"
+        elif "DERIV" in broker_acct.server.upper():
+            active_platform = f"{broker_acct.platform} (Deriv)"
+        else:
+            active_platform = broker_acct.platform
+    else:
+        active_platform = "MT5"
 
     for pair in available_pairs:
         symbols.append(
@@ -113,7 +122,11 @@ def quotes():
         )
 
     return render_template(
-        "mobile_quotes.html", symbols=symbols, trading_enabled=preferences.trading_enabled, active_page="quotes"
+        "mobile_quotes.html",
+        symbols=symbols,
+        broker_platform_label=active_platform,
+        trading_enabled=preferences.trading_enabled,
+        active_page="quotes",
     )
 
 
@@ -154,16 +167,22 @@ def history():
     winning_trades = len([t for t in closed_trades if t.profit_loss >= 0])
     win_rate = (winning_trades / total_trades * 100) if total_trades > 0 else 0
 
-    # Fetch recent signals and deduplicate by currency_pair keeping only the single newest per pair
+    # Fetch recent signals and deduplicate by currency_pair keeping only the single newest per ticked pair
+    from ..models import BrokerAccount, TradingPreference
+
+    preferences = TradingPreference.query.filter_by(user_id=current_user.id).first()
+    ticked_pairs = set(
+        preferences.currency_pairs if (preferences and preferences.currency_pairs is not None) else SUPPORTED_SYMBOLS
+    )
     raw_signals = TradingSignal.query.order_by(TradingSignal.created_at.desc()).all()
     seen_pairs = set()
     latest_signals = []
     for sig in raw_signals:
-        if sig.currency_pair not in seen_pairs:
-            seen_pairs.add(sig.currency_pair)
-            latest_signals.append(sig)
+        if sig.currency_pair in ticked_pairs and sig.currency_pair in SUPPORTED_SYMBOLS:
+            if sig.currency_pair not in seen_pairs:
+                seen_pairs.add(sig.currency_pair)
+                latest_signals.append(sig)
 
-    from ..models import BrokerAccount
     from ..services.broker_bridge import get_broker_telemetry
 
     broker_account = BrokerAccount.query.filter_by(user_id=current_user.id, is_connected=True).first()
@@ -183,6 +202,36 @@ def history():
         currency_symbol=telemetry["currency_symbol"],
         active_page="history",
     )
+
+
+@mobile_bp.route("/api/quotes/toggle", methods=["POST"])
+@login_required
+def api_quotes_toggle():
+    """Toggle currency pair active status asynchronously."""
+    from ..extensions import db
+    from ..models import TradingPreference
+
+    data = request.get_json(silent=True) or {}
+    pair = str(data.get("pair", "")).strip().upper()
+    enabled = bool(data.get("enabled", False))
+
+    if pair not in SUPPORTED_SYMBOLS:
+        return jsonify({"success": False, "error": f"Invalid or non-core symbol: {pair}"}), 400
+
+    preferences = TradingPreference.query.filter_by(user_id=current_user.id).first()
+    if not preferences:
+        preferences = TradingPreference(user_id=current_user.id)
+        db.session.add(preferences)
+
+    pairs = list(preferences.currency_pairs or [])
+    if enabled and pair not in pairs:
+        pairs.append(pair)
+    elif not enabled and pair in pairs:
+        pairs.remove(pair)
+
+    preferences.currency_pairs = pairs
+    db.session.commit()
+    return jsonify({"success": True, "currency_pairs": pairs})
 
 
 @mobile_bp.route("/profile", methods=["GET", "POST"])
@@ -281,7 +330,7 @@ def connect_broker():
             return render_template("mobile_connect_broker.html", broker_account=broker_account, active_page="profile")
 
         try:
-            verify_and_connect(platform=platform, server=server, login=login, password=password)
+            conn_info = verify_and_connect(platform=platform, server=server, login=login, password=password)
         except BrokerValidationError as exc:
             current_app.logger.warning("Broker validation failed for user %s: %s", current_user.id, exc)
             flash(f"Broker Validation Error: {exc}", "error")
@@ -306,6 +355,11 @@ def connect_broker():
         broker_account.account_login = login
         broker_account.encrypted_password = encrypt_broker_password(password)
         broker_account.is_connected = True
+        broker_account.currency = conn_info.get("currency", "ZAR" if "IFX" in server.upper() else "USD")
+        bal_val = Decimal(str(conn_info.get("balance", "3000.00" if "IFX" in server.upper() else "1000.00")))
+        broker_account.balance = bal_val
+        broker_account.equity = Decimal(str(conn_info.get("equity", bal_val)))
+        broker_account.free_margin = Decimal(str(conn_info.get("free_margin", broker_account.equity)))
         broker_account.last_synced_at = utcnow()
         db.session.commit()
 

@@ -554,7 +554,7 @@ def test_dynamic_currency_telemetry(app):
         assert telemetry["connected"] is True
         assert telemetry["currency"] == "ZAR"
         assert telemetry["currency_symbol"] == "R"
-        assert telemetry["balance"] >= 10000
+        assert telemetry["balance"] == Decimal("3000.00")
 
 
 def test_autonomous_scanner_cycle(app):

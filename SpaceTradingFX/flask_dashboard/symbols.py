@@ -20,7 +20,9 @@ class PaperInstrument:
     contract_size: Decimal = Decimal("100000")
 
 
-# Authoritative mapping populated with both FX and Equities/ETFs from the Security Master
+CORE_TRADING_PAIRS = ["USDJPY", "GBPUSD", "EURUSD", "XAUUSD", "USDZAR"]
+
+# Authoritative mapping populated with strictly the 5 core FX pairs
 PAPER_INSTRUMENTS: dict[str, PaperInstrument] = {
     symbol: PaperInstrument(
         symbol=sec.symbol,
@@ -29,10 +31,11 @@ PAPER_INSTRUMENTS: dict[str, PaperInstrument] = {
         contract_size=sec.contract_size,
     )
     for symbol, sec in SECURITY_REGISTRY.items()
+    if symbol in CORE_TRADING_PAIRS
 }
 
-SUPPORTED_SYMBOLS = frozenset(PAPER_INSTRUMENTS)
-DEFAULT_MONITORED_PAIRS = ["EURUSD", "GBPUSD", "USDJPY", "XAUUSD", "USDZAR"]
+SUPPORTED_SYMBOLS = frozenset(CORE_TRADING_PAIRS)
+DEFAULT_MONITORED_PAIRS = list(CORE_TRADING_PAIRS)
 # Alpha Vantage & broker intraday endpoints support these source intervals.
 SUPPORTED_TIMEFRAMES = frozenset({"1M", "5M", "15M", "1H"})
 DEFAULT_LOT_SIZE = Decimal("0.01")
@@ -40,7 +43,15 @@ DEFAULT_EQUITY_SHARES = Decimal("10")
 
 
 def instrument(symbol: str) -> PaperInstrument:
-    try:
-        return PAPER_INSTRUMENTS[symbol.upper()]
-    except KeyError as exc:
-        raise ValueError(f"Unsupported paper symbol: {symbol}") from exc
+    sym = symbol.upper()
+    if sym in PAPER_INSTRUMENTS:
+        return PAPER_INSTRUMENTS[sym]
+    if sym in SECURITY_REGISTRY:
+        sec = SECURITY_REGISTRY[sym]
+        return PaperInstrument(
+            symbol=sec.symbol,
+            pip_size=sec.pip_size,
+            price_decimals=sec.price_decimals,
+            contract_size=sec.contract_size,
+        )
+    raise ValueError(f"Unsupported paper symbol: {symbol}")

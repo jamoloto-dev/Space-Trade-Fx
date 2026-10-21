@@ -79,11 +79,12 @@ class TradingEngine:
             except Exception:
                 scanner = self.forex_provider
 
-        pairs_to_scan = (
+        raw_pairs = (
             self.preferences.currency_pairs
-            if (self.preferences and self.preferences.currency_pairs)
+            if (self.preferences and self.preferences.currency_pairs is not None)
             else DEFAULT_MONITORED_PAIRS
         )
+        pairs_to_scan = [p for p in raw_pairs if p in SUPPORTED_SYMBOLS]
         signals: list[dict] = []
 
         for symbol in pairs_to_scan:

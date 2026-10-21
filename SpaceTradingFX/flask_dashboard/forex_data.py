@@ -7,6 +7,7 @@ from typing import Any
 import requests
 
 logger = logging.getLogger(__name__)
+CORE_TRADING_PAIRS = ["USDJPY", "GBPUSD", "EURUSD", "XAUUSD", "USDZAR"]
 SOURCE_INTERVALS = {"1min", "5min", "15min", "30min", "60min"}
 PAPER_TIMEFRAME_INTERVALS = {"1M": "1min", "5M": "5min", "15M": "15min", "1H": "60min"}
 
@@ -393,29 +394,19 @@ class LiveMarketScanner:
     """Real-time institutional market scanner fetching live OHLCV candles via yfinance & Deriv WS."""
 
     TICKER_MAP = {
-        "EURUSD": "EURUSD=X",
-        "GBPUSD": "GBPUSD=X",
         "USDJPY": "USDJPY=X",
+        "GBPUSD": "GBPUSD=X",
+        "EURUSD": "EURUSD=X",
         "XAUUSD": "GC=F",
         "USDZAR": "USDZAR=X",
-        "AUDUSD": "AUDUSD=X",
-        "USDCAD": "USDCAD=X",
-        "USDCHF": "USDCHF=X",
-        "NZDUSD": "NZDUSD=X",
-        "BTCUSD": "BTC-USD",
-        "ETHUSD": "ETH-USD",
     }
 
     FALLBACK_PRICES = {
-        "EURUSD": 1.12270,
-        "GBPUSD": 1.33730,
         "USDJPY": 158.100,
+        "GBPUSD": 1.33730,
+        "EURUSD": 1.12270,
         "XAUUSD": 4132.50,
         "USDZAR": 16.4050,
-        "AUDUSD": 0.65500,
-        "USDCAD": 1.35000,
-        "USDCHF": 0.90000,
-        "NZDUSD": 0.61000,
     }
 
     def __init__(self, cache_ttl_seconds: int = 30):

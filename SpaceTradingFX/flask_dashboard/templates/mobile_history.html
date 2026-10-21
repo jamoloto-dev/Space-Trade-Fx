@@ -54,15 +54,20 @@
 
 <!-- Market Analysis Signals Section -->
 <div id="market-opportunities-section" style="{% if filter != 'analysing' %}display: none;{% endif %} margin-top: 15px; margin-bottom: 25px;">
-    {% if latest_signals %}
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; padding: 0 4px;">
-        <h3 style="font-size: 13px; font-weight: 700; letter-spacing: 1px; color: rgba(255,255,255,0.85); text-transform: uppercase;">
-            <i class="fas fa-chart-line" style="color: #4CAF50; margin-right: 6px;"></i> LIVE MARKET OPPORTUNITIES
-        </h3>
-        <span style="font-size: 11px; color: #4CAF50; font-weight: 600; background: rgba(76,175,80,0.15); padding: 2px 8px; border-radius: 10px;">
-            {{ latest_signals|length }} Signals
-        </span>
+    <div style="margin-bottom: 14px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; padding: 0 4px;">
+            <h3 style="font-size: 13px; font-weight: 700; letter-spacing: 1px; color: rgba(255,255,255,0.85); text-transform: uppercase; margin: 0;">
+                <i class="fas fa-chart-line" style="color: #4CAF50; margin-right: 6px;"></i> LIVE MARKET OPPORTUNITIES
+            </h3>
+            <span style="font-size: 11px; color: #4CAF50; font-weight: 600; background: rgba(76,175,80,0.15); padding: 2px 8px; border-radius: 10px;">
+                {{ latest_signals|length }} Signals
+            </span>
+        </div>
+        <a href="{{ url_for('trading.analyze_markets') }}" class="btn-primary" style="display: flex; align-items: center; justify-content: center; gap: 8px; text-decoration: none; font-size: 13px; font-weight: 800; padding: 12px 16px; border-radius: 12px; background: linear-gradient(135deg, #10B981 0%, #059669 100%); color: #FFF; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.35);">
+            <i class="fas fa-sync-alt"></i> 🔄 RE-ANALYSE SELECTED PAIRS
+        </a>
     </div>
+    {% if latest_signals %}
     {% for sig in latest_signals %}
     <div class="symbol-card" style="margin-bottom: 12px; padding: 14px 16px; border-left: 4px solid {% if sig.signal_type == 'BUY' %}#4CAF50{% else %}#F44336{% endif %};">
         <div class="symbol-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">

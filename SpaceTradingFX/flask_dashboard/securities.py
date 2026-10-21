@@ -13,6 +13,8 @@ from decimal import Decimal
 from enum import Enum
 from typing import Any
 
+CORE_TRADING_PAIRS = ["USDJPY", "GBPUSD", "EURUSD", "XAUUSD", "USDZAR"]
+
 
 class AssetClass(str, Enum):
     EQUITY = "EQUITY"
