@@ -478,7 +478,9 @@ class TradingEngine:
         lot = _decimal(configured.get(symbol, default_size), field="configured paper lot size")
         if lot <= 0:
             raise PaperTradeValidationError("Configured paper lot size must be positive")
-        precision = Decimal("1") if inst.contract_size == Decimal("1") else Decimal("0.0001")
+        precision = Decimal("1") if inst.contract_size == Decimal("1") else Decimal("0.01")
+        if inst.contract_size != Decimal("1"):
+            lot = max(Decimal("0.01"), lot)
         return lot.quantize(precision, rounding=ROUND_HALF_UP)
 
     def _calculate_sl_tp(self, entry_price: Decimal, direction: str, symbol: str) -> tuple[Decimal, Decimal]:
@@ -668,15 +670,20 @@ class TradingEngine:
 
     def get_account_summary(self) -> dict:
         broker_acct = BrokerAccount.query.filter_by(user_id=self.user_id, is_connected=True).first()
+
+        from .services.broker_bridge import get_broker_telemetry, sync_broker_positions
+
+        if broker_acct:
+            sync_broker_positions(self.user_id)
+
         all_trades = Trade.query.filter_by(user_id=self.user_id).all()
         closed = [trade for trade in all_trades if trade.status == "closed"]
         winning = sum(1 for trade in closed if trade.profit_loss > 0)
         losing = sum(1 for trade in closed if trade.profit_loss < 0)
         tear_sheet = compute_institutional_tear_sheet(closed)
 
-        from .services.broker_bridge import get_broker_telemetry
-
         telemetry = get_broker_telemetry(self.user_id)
+        open_trades = [trade for trade in all_trades if trade.status == "open"]
 
         return {
             "execution_mode": "broker" if broker_acct else "disconnected",
@@ -695,8 +702,8 @@ class TradingEngine:
             "losing_trades": losing,
             "win_rate": (Decimal(winning) / Decimal(len(closed)) * 100) if closed else Decimal("0"),
             "total_profit": sum((trade.profit_loss for trade in closed), Decimal("0")),
-            "active_trades": sum(1 for trade in all_trades if trade.status == "open"),
-            "trades": [trade for trade in all_trades if trade.status == "open"],
+            "active_trades": len(open_trades),
+            "trades": open_trades,
             "tear_sheet": tear_sheet,
             "sharpe_ratio": tear_sheet.sharpe_ratio,
             "sortino_ratio": tear_sheet.sortino_ratio,

@@ -49,7 +49,7 @@
     <tbody>{% for trade in account_summary.trades %}<tr>
       <td><strong>{{ trade.currency_pair }}</strong></td>
       <td>{{ status_badge(trade.trade_type, 'success' if trade.trade_type == 'BUY' else 'danger') }}</td>
-      <td>{{ '%.5f'|format(trade.entry_price) }}</td><td>{{ trade.lot_size }}</td>
+      <td>{{ '%.5f'|format(trade.entry_price) }}</td><td>{{ '%.2f'|format(trade.lot_size|float) }}</td>
       <td>${{ '%.2f'|format(trade.profit_loss) }}</td><td>{{ trade.opened_at.strftime('%d %b, %H:%M') }}</td>
       <td><form method="post" action="{{ url_for('trading.close_trade', trade_id=trade.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="button button--danger" type="submit">Close Position</button></form></td>
     </tr>{% endfor %}</tbody>

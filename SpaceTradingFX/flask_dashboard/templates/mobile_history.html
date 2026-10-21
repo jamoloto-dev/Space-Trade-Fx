@@ -286,7 +286,7 @@
                 {% endif %}
                 <div class="detail-row">
                     <span class="detail-label">Lot Size</span>
-                    <span class="detail-value">{{ trade.lot_size if trade.lot_size is not none else '0.01' }}</span>
+                    <span class="detail-value">{{ "%.2f"|format(trade.lot_size|float) if trade.lot_size is not none else '0.01' }}</span>
                 </div>
                 <div class="detail-row">
                     <span class="detail-label">SL / TP</span>

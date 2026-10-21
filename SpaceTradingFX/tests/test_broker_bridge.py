@@ -675,3 +675,120 @@ def test_api_broker_telemetry_endpoint(app, client):
         assert data["currency"] == "USD"
         assert data["currency_symbol"] == "$"
         assert float(data["balance"]) == 6.03
+
+
+def test_sync_broker_positions_and_live_telemetry(app, client, monkeypatch):
+    with app.app_context():
+        from flask_dashboard.models import Trade
+        from flask_dashboard.services.broker_bridge import (
+            get_broker_telemetry,
+            sync_broker_positions,
+        )
+
+        user = User(id="sync-user-1", email="sync@example.com")
+        user.set_password("SyncPass123!")
+        db.session.add(user)
+
+        account = BrokerAccount(
+            user_id="sync-user-1",
+            platform="MT5",
+            server="IFXBrokers-Real",
+            account_login="1861949",
+            encrypted_password=encrypt_broker_password("Pass123"),
+            is_connected=True,
+            balance=Decimal("16.55"),
+            currency="USD",
+        )
+        db.session.add(account)
+
+        # Pre-existing trade in DB with old lot size 0.0010 and 0.00 P/L
+        old_trade = Trade(
+            user_id="sync-user-1",
+            currency_pair="EURUSD",
+            trade_type="BUY",
+            entry_price=Decimal("1.12331"),
+            lot_size=Decimal("0.0010"),
+            status="open",
+            profit_loss=Decimal("0.00"),
+            execution_mode="broker",
+            idempotency_key="sync-test-eurusd",
+        )
+        db.session.add(old_trade)
+        db.session.commit()
+
+        # Mock MetaApi functions
+        mock_acc_info = {
+            "balance": 16.55,
+            "credit": 10.38,
+            "equity": 16.05,
+            "margin": 6.25,
+            "freeMargin": 9.80,
+            "currency": "USD",
+        }
+        mock_positions = [
+            {
+                "id": "239107383",
+                "symbol": "EURUSD.ifx",
+                "type": "POSITION_TYPE_BUY",
+                "volume": 0.01,
+                "openPrice": 1.12331,
+                "profit": -0.25,
+            },
+            {
+                "id": "239107489",
+                "symbol": "USDZAR.ifx",
+                "type": "POSITION_TYPE_SELL",
+                "volume": 0.01,
+                "openPrice": 16.37816,
+                "profit": -0.25,
+            },
+        ]
+
+        monkeypatch.setattr(
+            "flask_dashboard.services.broker_bridge.fetch_metaapi_account_info",
+            lambda *args, **kwargs: mock_acc_info,
+        )
+        monkeypatch.setattr(
+            "flask_dashboard.services.broker_bridge.fetch_metaapi_positions",
+            lambda *args, **kwargs: mock_positions,
+        )
+
+        # Temporarily enable non-testing flag in config for the service
+        app.config["TESTING"] = False
+        try:
+            open_trades = sync_broker_positions("sync-user-1")
+            assert len(open_trades) == 2
+
+            # Check EURUSD trade was updated with ticket, volume 0.01, and profit -0.25
+            eur_trade = Trade.query.filter_by(user_id="sync-user-1", currency_pair="EURUSD").first()
+            assert eur_trade.broker_order_id == "239107383"
+            assert eur_trade.lot_size == Decimal("0.01")
+            assert eur_trade.profit_loss == Decimal("-0.25")
+
+            # Check USDZAR position was added
+            zar_trade = Trade.query.filter_by(user_id="sync-user-1", currency_pair="USDZAR").first()
+            assert zar_trade is not None
+            assert zar_trade.broker_order_id == "239107489"
+            assert zar_trade.lot_size == Decimal("0.01")
+            assert zar_trade.profit_loss == Decimal("-0.25")
+
+            # Check telemetry
+            telemetry = get_broker_telemetry("sync-user-1")
+            assert telemetry["balance"] == Decimal("16.55")
+            assert telemetry["equity"] == Decimal("26.43")  # 16.05 + 10.38
+            assert telemetry["active_trades"] == 2
+            assert telemetry["total_trades"] == 2
+            assert len(telemetry["positions"]) == 2
+
+            # Check API endpoint
+            with client.session_transaction() as sess:
+                sess["_user_id"] = "sync-user-1"
+            resp = client.get("/api/broker/telemetry")
+            assert resp.status_code == 200
+            data = resp.get_json()
+            assert data["balance"] == 16.55
+            assert data["equity"] == 26.43
+            assert data["active_trades"] == 2
+            assert len(data["positions"]) == 2
+        finally:
+            app.config["TESTING"] = True

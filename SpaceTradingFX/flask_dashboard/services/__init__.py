@@ -59,11 +59,13 @@ from .broker_bridge import (
     dispatch_test_ping_trade,
     encrypt_broker_password,
     execute_robot_trade,
+    fetch_metaapi_positions,
     get_account_currency,
     get_broker_telemetry,
     get_symbol_spec,
     normalize_volume,
     resolve_filling_mode,
+    sync_broker_positions,
     verify_and_connect,
 )
 from .news_intelligence import (
@@ -131,6 +133,8 @@ __all__ = [
     "execute_robot_trade",
     "get_account_currency",
     "get_broker_telemetry",
+    "fetch_metaapi_positions",
+    "sync_broker_positions",
     "normalize_volume",
     "resolve_filling_mode",
     "get_symbol_spec",

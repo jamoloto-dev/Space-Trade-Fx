@@ -491,8 +491,9 @@ def connect_broker():
 @login_required
 def api_broker_telemetry():
     """Endpoint returning live broker account telemetry for dynamic UI updates."""
-    from ..services.broker_bridge import get_broker_telemetry
+    from ..services.broker_bridge import get_broker_telemetry, sync_broker_positions
 
+    sync_broker_positions(current_user.id)
     telemetry = get_broker_telemetry(current_user.id)
     return jsonify(
         {
@@ -506,6 +507,9 @@ def api_broker_telemetry():
             "floating_pnl": float(telemetry.get("floating_pnl", 0.0)),
             "server": telemetry.get("server", ""),
             "platform": telemetry.get("platform", ""),
+            "total_trades": telemetry.get("total_trades", 0),
+            "active_trades": telemetry.get("active_trades", 0),
+            "positions": telemetry.get("positions", []),
         }
     )
 

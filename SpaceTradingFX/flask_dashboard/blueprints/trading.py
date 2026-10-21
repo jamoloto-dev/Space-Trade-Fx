@@ -272,10 +272,11 @@ def api_account_summary():
             "id": t.id,
             "currency_pair": t.currency_pair,
             "trade_type": t.trade_type,
-            "entry_price": t.entry_price,
-            "lot_size": t.lot_size,
-            "profit_loss": t.profit_loss,
-            "opened_at": t.opened_at.isoformat(),
+            "entry_price": float(t.entry_price),
+            "lot_size": float(t.lot_size),
+            "profit_loss": float(t.profit_loss),
+            "opened_at": t.opened_at.isoformat() if t.opened_at else None,
+            "broker_order_id": t.broker_order_id,
         }
         for t in summary["trades"]
     ]
@@ -425,7 +426,8 @@ def api_mt5_connect():
 @require_license
 def api_mt5_positions():
     """Query open broker positions for the connected MT4/MT5 account."""
-    from ..models import BrokerAccount, Trade
+    from ..models import BrokerAccount
+    from ..services.broker_bridge import sync_broker_positions
 
     broker_account = BrokerAccount.query.filter_by(user_id=current_user.id, is_connected=True).first()
     if not broker_account:
@@ -437,10 +439,10 @@ def api_mt5_positions():
             }
         ), 400
 
-    open_trades = Trade.query.filter_by(user_id=current_user.id, status="open").all()
+    open_trades = sync_broker_positions(current_user.id)
     positions = [
         {
-            "ticket": t.mt5_ticket or str(t.id),
+            "ticket": t.broker_order_id or t.mt5_ticket or str(t.id),
             "symbol": t.currency_pair,
             "type": t.trade_type,
             "volume": float(t.lot_size),
@@ -517,8 +519,9 @@ def connect_broker_redirect():
 @login_required
 def api_broker_telemetry_alias():
     """Retrieve live account telemetry for dynamic UI updates."""
-    from ..services.broker_bridge import get_broker_telemetry
+    from ..services.broker_bridge import get_broker_telemetry, sync_broker_positions
 
+    sync_broker_positions(current_user.id)
     telemetry = get_broker_telemetry(current_user.id)
     return jsonify(
         {
@@ -532,6 +535,9 @@ def api_broker_telemetry_alias():
             "floating_pnl": float(telemetry.get("floating_pnl", 0.0)),
             "server": telemetry.get("server", ""),
             "platform": telemetry.get("platform", ""),
+            "total_trades": telemetry.get("total_trades", 0),
+            "active_trades": telemetry.get("active_trades", 0),
+            "positions": telemetry.get("positions", []),
         }
     )
 

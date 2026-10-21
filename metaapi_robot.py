@@ -497,6 +497,42 @@ async def monitor_open_positions(
                         f"{float(tp):.5f}" if tp is not None else "None",
                     )
 
+                    # Synchronize real-time floating P/L and lot size to local trading.db if present
+                    try:
+                        import sqlite3
+
+                        db_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "trading.db")
+                        if os.path.exists(db_file):
+                            with sqlite3.connect(db_file, timeout=2.0) as db_conn:
+                                cur = db_conn.cursor()
+                                cur.execute(
+                                    """
+                                    UPDATE trades
+                                    SET profit_loss = ?, lot_size = ?, updated_at = datetime('now')
+                                    WHERE broker_order_id = ? OR mt5_ticket = ?
+                                    """,
+                                    (round(pnl, 2), round(vol, 2), pos_id, pos_id),
+                                )
+                                if cur.rowcount == 0:
+                                    clean_sym = symbol.replace(".ifx", "").upper()
+                                    cur.execute(
+                                        """
+                                        UPDATE trades
+                                        SET broker_order_id = ?, mt5_ticket = ?, profit_loss = ?, lot_size = ?, updated_at = datetime('now')
+                                        WHERE id IN (
+                                            SELECT id FROM trades
+                                            WHERE (currency_pair = ? OR currency_pair = ?)
+                                              AND status = 'open'
+                                              AND (broker_order_id IS NULL OR broker_order_id = '')
+                                            LIMIT 1
+                                        )
+                                        """,
+                                        (pos_id, pos_id, round(pnl, 2), round(vol, 2), clean_sym, symbol),
+                                    )
+                                db_conn.commit()
+                    except Exception as db_err:
+                        logger.debug("Local db sync from monitor skipped: %s", db_err)
+
                     # Target & Risk Enforcement (TP/SL)
                     should_close = False
                     close_reason = ""

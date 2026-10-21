@@ -417,6 +417,7 @@ def get_account_currency(server: str) -> tuple[str, str]:
 
 
 _METAAPI_TELEMETRY_CACHE: dict[str, tuple[dict[str, Any], float]] = {}
+_METAAPI_POSITIONS_CACHE: dict[str, tuple[list[dict[str, Any]], float]] = {}
 
 
 def fetch_metaapi_account_info(
@@ -455,6 +456,138 @@ def fetch_metaapi_account_info(
     return None
 
 
+def fetch_metaapi_positions(
+    account_id: str | None = None,
+    token: str | None = None,
+    cache_ttl_seconds: float = 3.0,
+) -> list[dict[str, Any]] | None:
+    """Fetch live open positions from MetaApi cloud REST client API with caching."""
+    if current_app and current_app.config.get("TESTING"):
+        return None
+
+    token = token or os.environ.get("METAAPI_TOKEN")
+    account_id = account_id or os.environ.get("METAAPI_ACCOUNT_ID")
+    if not token or not account_id:
+        return None
+
+    now = time.time()
+    cache_key = f"{account_id}:{token[-8:]}" if len(token) >= 8 else str(account_id)
+    if cache_key in _METAAPI_POSITIONS_CACHE:
+        cached_data, cached_time = _METAAPI_POSITIONS_CACHE[cache_key]
+        if (now - cached_time) < cache_ttl_seconds:
+            return cached_data
+
+    try:
+        import requests
+
+        client_base_url = resolve_metaapi_client_base_url()
+        url = f"{client_base_url}/users/current/accounts/{account_id}/positions"
+        resp = requests.get(url, headers={"auth-token": token}, timeout=4.0)
+        if resp.status_code == 200:
+            data = resp.json()
+            if isinstance(data, list):
+                _METAAPI_POSITIONS_CACHE[cache_key] = (data, now)
+                return data
+    except Exception as exc:
+        logger.debug("MetaApi live positions query skipped/failed: {}", exc)
+    return None
+
+
+def sync_broker_positions(user_id: str) -> list[Any]:
+    """Synchronize open broker positions and real-time floating P/L with MetaApi / DB."""
+    from ..extensions import db
+    from ..models import BrokerAccount, Trade
+
+    account = BrokerAccount.query.filter_by(user_id=user_id, is_connected=True).first()
+    if not account:
+        return Trade.query.filter_by(user_id=user_id, status="open").all()
+
+    meta_positions = None
+    meta_token = os.environ.get("METAAPI_TOKEN")
+    meta_acc_id = os.environ.get("METAAPI_ACCOUNT_ID")
+    if meta_token and meta_acc_id and not (current_app and current_app.config.get("TESTING")):
+        meta_positions = fetch_metaapi_positions(meta_acc_id, meta_token)
+
+    if meta_positions is not None:
+        seen_tickets: set[str] = set()
+        for pos in meta_positions:
+            ticket = str(pos.get("id"))
+            seen_tickets.add(ticket)
+            sym_raw = str(pos.get("symbol", "EURUSD"))
+            clean_sym = sym_raw.replace(".ifx", "").upper()
+            pos_type = "BUY" if "BUY" in str(pos.get("type", "BUY")).upper() else "SELL"
+            vol = Decimal(f"{float(pos.get('volume', 0.01)):.2f}")
+            open_price = Decimal(f"{float(pos.get('openPrice', 0.0)):.5f}")
+            profit = Decimal(f"{float(pos.get('profit', 0.0)):.2f}")
+            sl = Decimal(f"{float(pos['stopLoss']):.5f}") if pos.get("stopLoss") is not None else None
+            tp = Decimal(f"{float(pos['takeProfit']):.5f}") if pos.get("takeProfit") is not None else None
+
+            # 1. Match existing trade by ticket ID
+            trade = Trade.query.filter(
+                Trade.user_id == user_id,
+                (Trade.broker_order_id == ticket) | (Trade.mt5_ticket == ticket),
+            ).first()
+
+            # 2. If not found by ticket, match unticketed open trade for same symbol
+            if not trade:
+                trade = Trade.query.filter(
+                    Trade.user_id == user_id,
+                    Trade.currency_pair.in_([clean_sym, sym_raw]),
+                    Trade.status == "open",
+                    (Trade.broker_order_id.is_(None) | (Trade.broker_order_id == "")),
+                ).first()
+
+            if trade:
+                trade.broker_order_id = ticket
+                trade.mt5_ticket = ticket
+                trade.lot_size = vol
+                trade.profit_loss = profit
+                if open_price > 0:
+                    trade.entry_price = open_price
+                if sl is not None:
+                    trade.stop_loss = sl
+                if tp is not None:
+                    trade.take_profit = tp
+                trade.status = "open"
+                trade.updated_at = utcnow()
+            else:
+                trade = Trade(
+                    user_id=user_id,
+                    currency_pair=clean_sym,
+                    trade_type=pos_type,
+                    entry_price=open_price,
+                    lot_size=vol,
+                    stop_loss=sl,
+                    take_profit=tp,
+                    status="open",
+                    profit_loss=profit,
+                    execution_mode="broker",
+                    idempotency_key=f"metaapi:{ticket}",
+                    mt5_ticket=ticket,
+                    broker_order_id=ticket,
+                    broker_response=pos,
+                    reconciliation_state="reconciled",
+                    opened_at=utcnow(),
+                )
+                db.session.add(trade)
+
+        # Reconcile open trades in DB whose tickets are no longer active on broker
+        open_trades = Trade.query.filter_by(user_id=user_id, status="open").all()
+        for t in open_trades:
+            if t.broker_order_id and t.broker_order_id not in seen_tickets:
+                t.status = "closed"
+                t.closed_at = utcnow()
+                t.updated_at = utcnow()
+
+        try:
+            db.session.commit()
+        except Exception as exc:
+            db.session.rollback()
+            logger.warning("Error committing broker position sync: {}", exc)
+
+    return Trade.query.filter_by(user_id=user_id, status="open").all()
+
+
 def get_broker_telemetry(user_id: str) -> dict[str, Any]:
     """Retrieve live account telemetry (Balance, Equity, Free Margin, Currency) for user."""
     from ..models import BrokerAccount, Trade
@@ -469,6 +602,9 @@ def get_broker_telemetry(user_id: str) -> dict[str, Any]:
             "equity": Decimal("0.00"),
             "free_margin": Decimal("0.00"),
             "floating_pnl": Decimal("0.00"),
+            "total_trades": 0,
+            "active_trades": 0,
+            "positions": [],
         }
 
     meta_info = None
@@ -480,16 +616,24 @@ def get_broker_telemetry(user_id: str) -> dict[str, Any]:
     if meta_info:
         raw_bal = float(meta_info.get("balance", 0.0))
         credit = float(meta_info.get("credit", 0.0))
-        # Net deposit balance (deducting credit bonus if total balance includes credit)
-        true_balance = (
-            raw_bal - credit if (credit > 0 and raw_bal > credit and (raw_bal - credit) < raw_bal) else raw_bal
-        )
+        # Net balance from MetaApi (includes all settled deposits and account capital)
+        base_balance = Decimal(f"{raw_bal:.2f}")
+
+        # MetaTrader terminal equity = Balance + Credit + Unrealized Profit/Loss
+        api_equity = float(meta_info.get("equity", raw_bal))
+        terminal_equity = api_equity + credit if credit > 0 and api_equity < (raw_bal + credit - 0.5) else api_equity
+        equity = Decimal(f"{terminal_equity:.2f}")
+
+        # Terminal Free Margin = Equity - Margin
+        margin = float(meta_info.get("margin", 0.0))
+        free_margin_val = float(meta_info.get("freeMargin", terminal_equity - margin))
+        if credit > 0 and free_margin_val < (terminal_equity - margin - 0.5):
+            free_margin_val += credit
+        free_margin = max(Decimal("0.00"), Decimal(f"{free_margin_val:.2f}"))
+
+        floating_pnl = Decimal(f"{(api_equity - raw_bal):.2f}")
         currency = str(meta_info.get("currency", "USD")).upper()
         currency_symbol = "R" if currency == "ZAR" else "$"
-        base_balance = Decimal(f"{true_balance:.2f}")
-        equity = Decimal(f"{float(meta_info.get('equity', true_balance)):.2f}")
-        free_margin = Decimal(f"{float(meta_info.get('freeMargin', equity)):.2f}")
-        floating_pnl = equity - base_balance
     else:
         if getattr(account, "currency", None):
             currency = str(account.currency)
@@ -536,6 +680,9 @@ def get_broker_telemetry(user_id: str) -> dict[str, Any]:
     except Exception:
         pass
 
+    open_trades = Trade.query.filter_by(user_id=user_id, status="open").all()
+    all_trades = Trade.query.filter_by(user_id=user_id).all()
+
     return {
         "connected": True,
         "platform": account.platform,
@@ -547,6 +694,21 @@ def get_broker_telemetry(user_id: str) -> dict[str, Any]:
         "equity": equity,
         "free_margin": free_margin,
         "floating_pnl": floating_pnl,
+        "total_trades": len(all_trades),
+        "active_trades": len(open_trades),
+        "positions": [
+            {
+                "ticket": t.broker_order_id or t.mt5_ticket or str(t.id),
+                "symbol": t.currency_pair,
+                "type": t.trade_type,
+                "volume": float(t.lot_size),
+                "entry_price": float(t.entry_price),
+                "profit": float(t.profit_loss),
+                "stop_loss": float(t.stop_loss) if t.stop_loss else None,
+                "take_profit": float(t.take_profit) if t.take_profit else None,
+            }
+            for t in open_trades
+        ],
     }
 
 

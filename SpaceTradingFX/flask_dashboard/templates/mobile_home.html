@@ -95,19 +95,19 @@
     <div class="broker-metrics">
         <div class="symbol-card">
             <div class="detail-label">TOTAL TRADES</div>
-            <div class="detail-value">{{ account_summary.total_trades }}</div>
+            <div class="detail-value" id="metric-total-trades">{{ account_summary.total_trades }}</div>
         </div>
         <div class="symbol-card">
             <div class="detail-label">WIN RATE</div>
-            <div class="detail-value value-positive">{{ "%.1f"|format(account_summary.win_rate) }}%</div>
+            <div class="detail-value value-positive" id="metric-win-rate">{{ "%.1f"|format(account_summary.win_rate) }}%</div>
         </div>
         <div class="symbol-card">
             <div class="detail-label">ACTIVE TRADES</div>
-            <div class="detail-value">{{ account_summary.active_trades }}</div>
+            <div class="detail-value" id="metric-active-trades">{{ account_summary.active_trades }}</div>
         </div>
         <div class="symbol-card">
             <div class="detail-label">PROFIT/LOSS</div>
-            <div class="detail-value {% if account_summary.total_profit >= 0 %}value-positive{% else %}value-negative{% endif %}">
+            <div class="detail-value {% if account_summary.total_profit >= 0 %}value-positive{% else %}value-negative{% endif %}" id="metric-profit-loss">
                 {% if account_summary.total_profit >= 0 %}+{% endif %}{{ account_summary.currency_symbol }}{{ "%.2f"|format(account_summary.total_profit) }}
             </div>
         </div>
@@ -216,11 +216,11 @@
             </div>
             <div class="detail-item">
                 <div class="detail-label">LOT SIZE</div>
-                <div class="detail-value">{{ trade.lot_size }}</div>
+                <div class="detail-value">{{ "%.2f"|format(trade.lot_size|float) }}</div>
             </div>
             <div class="detail-item">
                 <div class="detail-label">P/L</div>
-                <div class="detail-value {% if trade.profit_loss >= 0 %}value-positive{% else %}value-negative{% endif %}">
+                <div class="detail-value {% if trade.profit_loss >= 0 %}value-positive{% else %}value-negative{% endif %}" id="pos-pnl-{{ trade.broker_order_id or trade.mt5_ticket or trade.id }}">
                     {% if trade.profit_loss >= 0 %}+{% endif %}{{ account_summary.currency_symbol }}{{ "%.2f"|format(trade.profit_loss) }}
                 </div>
             </div>
@@ -304,6 +304,8 @@ function refreshTelemetry() {
                 const eqEl = document.getElementById('telemetry-equity');
                 const fmEl = document.getElementById('telemetry-free-margin');
                 const curLabel = document.getElementById('telemetry-currency-label');
+                const totEl = document.getElementById('metric-total-trades');
+                const actEl = document.getElementById('metric-active-trades');
                 const sym = data.currency_symbol || '$';
                 if (balEl && typeof data.balance === 'number') {
                     balEl.textContent = `${sym}${data.balance.toFixed(2)}`;
@@ -316,6 +318,24 @@ function refreshTelemetry() {
                 }
                 if (curLabel && data.currency) {
                     curLabel.textContent = `LIVE TELEMETRY (${data.currency})`;
+                }
+                if (totEl && typeof data.total_trades === 'number') {
+                    totEl.textContent = data.total_trades;
+                }
+                if (actEl && typeof data.active_trades === 'number') {
+                    actEl.textContent = data.active_trades;
+                }
+                if (Array.isArray(data.positions)) {
+                    data.positions.forEach(pos => {
+                        const ticket = pos.ticket;
+                        const pnlEl = document.getElementById(`pos-pnl-${ticket}`);
+                        if (pnlEl && typeof pos.profit === 'number') {
+                            const pnl = pos.profit;
+                            const sign = pnl >= 0 ? '+' : '';
+                            pnlEl.textContent = `${sign}${sym}${pnl.toFixed(2)}`;
+                            pnlEl.className = 'detail-value ' + (pnl >= 0 ? 'value-positive' : 'value-negative');
+                        }
+                    });
                 }
             }
         })
