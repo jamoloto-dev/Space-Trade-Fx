@@ -259,3 +259,11 @@ def test_evaluate_ai_context_nonexistent_db():
     assert "veto" in ctx
     assert "history" in ctx
     assert ctx["risk_multiplier"] == 1.0
+
+
+def test_evaluate_market_signal():
+    sig = metaapi_robot.evaluate_market_signal("EURUSD")
+    assert "signal" in sig
+    assert "strength" in sig
+    assert "confidence" in sig
+    assert sig["currency_pair"] in {"EURUSD", "EURUSD.ifx"}

@@ -3,8 +3,9 @@
 
 Institutional-grade automated trading script connecting to MT4/MT5 accounts
 via the metaapi-cloud-sdk and loading credentials securely from .env.
-Features dynamic balance-aware position sizing, advanced risk guardrails,
-drawdown circuit breakers, and AI adaptive sentiment learning.
+Features an autonomous scanning loop, live telemetry ingestion, AI adaptive
+sentiment learning, dynamic position sizing, and strict risk guardrails with
+inter-trade cooldown periods.
 """
 
 from __future__ import annotations
@@ -14,6 +15,8 @@ import asyncio
 import logging
 import os
 import sys
+import time
+from datetime import datetime, timezone
 from logging.handlers import RotatingFileHandler
 from typing import Any
 
@@ -162,7 +165,6 @@ async def fetch_account_information(connection) -> dict[str, Any]:
     currency = info.get("currency", "USD")
     raw_bal = float(info.get("balance", 0.0))
     credit = float(info.get("credit", 0.0))
-    # True net balance deducting promotional credit
     balance = raw_bal - credit if (credit > 0 and raw_bal > credit) else raw_bal
     equity = float(info.get("equity", 0.0))
     free_margin = float(info.get("freeMargin", 0.0))
@@ -192,13 +194,7 @@ def calculate_position_size(
     max_volume: float = 50.0,
     volume_step: float = 0.01,
 ) -> float:
-    """Calculate dynamic position size based on account equity and strict risk limits.
-
-    Formula:
-        risk_capital = equity * (risk_pct / 100.0)
-        raw_lots = risk_capital / (sl_pips * pip_value_per_lot)
-        rounded_lots = round to nearest volume_step, clamped within [min_volume, max_volume]
-    """
+    """Calculate dynamic position size based on account equity and strict risk limits."""
     if equity <= 0:
         return min_volume
 
@@ -211,7 +207,7 @@ def calculate_position_size(
     final_lots = min(max_volume, sized_lots)
 
     logger.info(
-        "Dynamic Position Sizing: Equity: $%.2f | Risk: %.1f%% ($%.2f) | SL: %.1f pips | Computed: %.3f lots -> Clamped: %.2f lots",
+        "Dynamic Position Sizing: Equity: $%.2f | Risk: %.1f%% ($%.2f) | SL: %.1f pips | Computed: %.3f lots -> Sized: %.2f lots",
         equity,
         risk_pct,
         risk_capital,
@@ -295,9 +291,9 @@ def get_recent_trade_history(db_path: str | None = None, limit: int = 10) -> dic
 
         risk_multiplier = 1.0
         if consecutive_losses >= 3:
-            risk_multiplier = 0.5  # Halve risk after 3 consecutive losses
+            risk_multiplier = 0.5
         elif consecutive_losses >= 2:
-            risk_multiplier = 0.75  # 25% risk reduction after 2 consecutive losses
+            risk_multiplier = 0.75
 
         return {
             "total_evaluated": len(pnl_list),
@@ -339,20 +335,6 @@ def evaluate_ai_context(symbol: str, action: str, db_path: str | None = None) ->
     except Exception as exc:
         logger.debug("AI news intelligence evaluation notice: %s", exc)
 
-    print("\n" + "=" * 60)
-    print("               AI ADAPTIVE CONTEXT SUMMARY")
-    print("=" * 60)
-    print(f"  Target Symbol   : {symbol}")
-    print(f"  Proposed Action : {action}")
-    print(f"  Macro Sentiment : Score {sentiment.get('score', 0.0):+.2f} ({sentiment.get('sentiment', 'NEUTRAL')})")
-    print(f"  Key Headline    : {sentiment.get('headline', 'Standard Market Conditions')[:45]}...")
-    print(f"  Recent Win Rate : {history.get('win_rate', 0.0):.1f}% (Evaluated {history.get('total_evaluated', 0)})")
-    print(
-        f"  Losing Streak   : {history.get('consecutive_losses', 0)} consecutive losses (Risk Mult: {history.get('risk_multiplier', 1.0):.2f}x)"
-    )
-    print(f"  AI Veto Status  : {'🚫 BLOCKED (' + str(ai_veto_reason) + ')' if ai_veto_active else '✅ CLEARED'}")
-    print("=" * 60 + "\n")
-
     return {
         "veto": ai_veto_active,
         "veto_reason": ai_veto_reason,
@@ -360,6 +342,34 @@ def evaluate_ai_context(symbol: str, action: str, db_path: str | None = None) ->
         "history": history,
         "risk_multiplier": history.get("risk_multiplier", 1.0),
     }
+
+
+def evaluate_market_signal(symbol: str, timeframe: str = "1H") -> dict[str, Any]:
+    """Evaluate market technical indicators and return directional signal."""
+    try:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        stfx_dir = os.path.join(base_dir, "SpaceTradingFX")
+        if stfx_dir not in sys.path:
+            sys.path.insert(0, stfx_dir)
+        from flask_dashboard.forex_data import LiveMarketScanner
+
+        scanner = LiveMarketScanner()
+        raw_sym = symbol.split(".")[0].upper()
+        sig = scanner.analyze_signal(raw_sym, timeframe=timeframe)
+        if "confidence" not in sig:
+            sig["confidence"] = float(sig.get("strength", 50.0))
+        return sig
+    except Exception as exc:
+        logger.debug("Market signal scanner evaluation notice for %s: %s", symbol, exc)
+        return {
+            "currency_pair": symbol,
+            "signal": "HOLD",
+            "strength": 50,
+            "confidence": 50.0,
+            "entry_price": None,
+            "stop_loss": None,
+            "take_profit": None,
+        }
 
 
 async def check_risk_guardrails(
@@ -497,8 +507,9 @@ async def execute_market_order(
 
 async def run_trading_robot(
     symbol: str = "EURUSD",
+    symbols: list[str] | None = None,
     volume: float | None = None,
-    action: str = "BUY",
+    action: str | None = None,
     account_id: str | None = None,
     execute_order: bool = True,
     risk_pct: float = 1.5,
@@ -506,8 +517,13 @@ async def run_trading_robot(
     max_drawdown_pct: float = 5.0,
     sl_pips: float = 25.0,
     tp_pips: float = 50.0,
+    min_confidence: float = 65.0,
+    loop: bool = False,
+    interval_seconds: float = 30.0,
+    cooldown_seconds: float = 60.0,
+    max_cycles: int | None = None,
 ) -> None:
-    """Core execution lifecycle: authenticate, check risk guardrails, apply AI context, and trade."""
+    """Core autonomous trading loop: monitor telemetry, evaluate AI signals, manage risk, and trade."""
     token, env_account_id = load_credentials()
     target_account_id = account_id or env_account_id
 
@@ -529,6 +545,10 @@ async def run_trading_robot(
     api = MetaApi(token=token)
 
     connection = None
+    target_symbols = symbols if symbols else [symbol]
+    last_trade_time: float = 0.0
+    cycle_count = 0
+
     try:
         # Step 1: Resolve Account
         resolved_id = await resolve_account_id(api, target_account_id)
@@ -559,99 +579,195 @@ async def run_trading_robot(
         await connection.wait_synchronized()
         logger.info("Terminal synchronized successfully.")
 
-        # Step 4: Fetch & Display Account Information
-        acct_info = await fetch_account_information(connection)
-        raw_bal = float(acct_info.get("balance", 0.0))
-        credit = float(acct_info.get("credit", 0.0))
-        balance = raw_bal - credit if (credit > 0 and raw_bal > credit) else raw_bal
-        equity = float(acct_info.get("equity", balance))
-        free_margin = float(acct_info.get("freeMargin", equity))
+        # Step 4: Autonomous Scanning & Execution Loop
+        while True:
+            cycle_count += 1
+            now_utc_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+            logger.info("════════════════════════════════════════════════════════════")
+            logger.info("   AUTONOMOUS SCAN CYCLE #%d [%s]", cycle_count, now_utc_str)
+            logger.info("════════════════════════════════════════════════════════════")
 
-        # Step 5: Drawdown Circuit Breaker Check
-        is_circuit_broken, dd_pct = check_drawdown_circuit_breaker(
-            starting_balance=balance,
-            current_equity=equity,
-            max_drawdown_pct=max_drawdown_pct,
-        )
-        if is_circuit_broken:
-            logger.warning("Execution halted by Drawdown Circuit Breaker (%.2f%%).", dd_pct)
-            return
+            # 4.1. Query Live Account Telemetry (Balance and Equity)
+            acct_info = await fetch_account_information(connection)
+            raw_bal = float(acct_info.get("balance", 0.0))
+            credit = float(acct_info.get("credit", 0.0))
+            balance = raw_bal - credit if (credit > 0 and raw_bal > credit) else raw_bal
+            equity = float(acct_info.get("equity", balance))
+            free_margin = float(acct_info.get("freeMargin", equity))
 
-        # Step 6: AI Adaptive Learning & Sentiment Evaluation
-        ai_ctx = evaluate_ai_context(symbol, action)
-        if ai_ctx.get("veto"):
-            logger.warning("Execution blocked by AI Veto Gate: %s", ai_ctx.get("veto_reason"))
-            return
-
-        # Adapt risk percentage based on trade history streak
-        adjusted_risk_pct = risk_pct * float(ai_ctx.get("risk_multiplier", 1.0))
-
-        # Step 7: Dynamic Position Sizing
-        actual_symbol = await resolve_tradable_symbol(connection, symbol)
-        try:
-            spec = await connection.get_symbol_specification(actual_symbol)
-            min_vol = float(spec.get("minVolume", 0.01))
-            max_vol = float(spec.get("maxVolume", 50.0))
-            vol_step = float(spec.get("volumeStep", 0.01))
-            digits = int(spec.get("digits", 5))
-            pip_size = float(spec.get("pipSize", 0.0001))
-        except Exception:
-            min_vol, max_vol, vol_step, digits, pip_size = 0.01, 50.0, 0.01, 5, 0.0001
-
-        final_volume = (
-            volume
-            if volume is not None
-            else calculate_position_size(
-                equity=equity,
-                risk_pct=adjusted_risk_pct,
-                sl_pips=sl_pips,
-                min_volume=min_vol,
-                max_volume=max_vol,
-                volume_step=vol_step,
+            # 4.2. Drawdown Circuit Breaker
+            is_circuit_broken, dd_pct = check_drawdown_circuit_breaker(
+                starting_balance=balance,
+                current_equity=equity,
+                max_drawdown_pct=max_drawdown_pct,
             )
-        )
+            if is_circuit_broken:
+                logger.warning("Daily drawdown limit reached (%.2f%%). Pausing cycle for next interval.", dd_pct)
+                if not loop or (max_cycles and cycle_count >= max_cycles):
+                    break
+                await asyncio.sleep(interval_seconds)
+                continue
 
-        # Step 8: Risk Guardrails Check (Open trades cap & Margin requirement)
-        leverage = float(acct_info.get("leverage", 100))
-        approx_req_margin = (final_volume * 100000.0) / max(1.0, leverage)
-        guardrail_passed, guardrail_reason = await check_risk_guardrails(
-            connection=connection,
-            symbol=actual_symbol,
-            lot_size=final_volume,
-            max_open_trades=max_open_trades,
-            free_margin=free_margin,
-            required_margin=approx_req_margin,
-        )
-        if not guardrail_passed:
-            logger.warning("Execution blocked by Risk Guardrail: %s", guardrail_reason)
-            return
+            # 4.3. Trade Cooldown Waiting Period (Prevent Over-Trading)
+            now_ts = time.time()
+            elapsed_since_trade = now_ts - last_trade_time
+            if last_trade_time > 0 and elapsed_since_trade < cooldown_seconds:
+                remaining_wait = cooldown_seconds - elapsed_since_trade
+                logger.info(
+                    "⏳ Trade Cooldown Active: %.1fs remaining of %.1fs waiting period. Pausing trade execution.",
+                    remaining_wait,
+                    cooldown_seconds,
+                )
+                if not loop or (max_cycles and cycle_count >= max_cycles):
+                    break
+                await asyncio.sleep(interval_seconds)
+                continue
 
-        # Step 9: Automatic Stop Loss and Take Profit Brackets
-        try:
-            price_info = await connection.get_symbol_price(actual_symbol)
-            entry = float(price_info.get("ask" if action.upper() == "BUY" else "bid", 1.0)) if price_info else 1.08500
-        except Exception:
-            entry = 1.08500
+            # 4.4. Evaluate AI Signals & Strategy across monitored symbols
+            order_executed_this_cycle = False
+            for sym in target_symbols:
+                actual_sym = await resolve_tradable_symbol(connection, sym)
 
-        if action.upper() == "BUY":
-            calc_sl = round(entry - (sl_pips * pip_size), digits)
-            calc_tp = round(entry + (tp_pips * pip_size), digits)
-        else:
-            calc_sl = round(entry + (sl_pips * pip_size), digits)
-            calc_tp = round(entry - (tp_pips * pip_size), digits)
+                # Guardrail check: max open trades and duplicate symbol position
+                guardrail_passed, guardrail_reason = await check_risk_guardrails(
+                    connection=connection,
+                    symbol=actual_sym,
+                    lot_size=0.01,
+                    max_open_trades=max_open_trades,
+                    free_margin=free_margin,
+                    required_margin=0.0,
+                )
+                if not guardrail_passed:
+                    logger.info("Guardrail active for %s: %s", actual_sym, guardrail_reason)
+                    continue
 
-        # Step 10: Execute Market Order
-        if execute_order:
-            await execute_market_order(
-                connection=connection,
-                symbol=actual_symbol,
-                volume=final_volume,
-                action=action,
-                stop_loss=calc_sl,
-                take_profit=calc_tp,
-            )
-        else:
-            logger.info("Execution flag not set. Skipping market order placement.")
+                # Strategy signal evaluation
+                signal_data = evaluate_market_signal(sym)
+                target_action = action if action else signal_data.get("signal", "HOLD")
+                confidence = float(signal_data.get("confidence", signal_data.get("strength", 50.0)))
+
+                if target_action not in {"BUY", "SELL"}:
+                    logger.info(
+                        "Market scan for %s: %s (Confidence: %.1f%%). No trade action required.",
+                        sym,
+                        target_action,
+                        confidence,
+                    )
+                    continue
+
+                if confidence < min_confidence and not action:
+                    logger.info(
+                        "Signal %s for %s confidence %.1f%% < minimum %.1f%%. Skipping.",
+                        target_action,
+                        sym,
+                        confidence,
+                        min_confidence,
+                    )
+                    continue
+
+                # AI Adaptive Context & News Sentiment Veto
+                ai_ctx = evaluate_ai_context(sym, target_action)
+                if ai_ctx.get("veto"):
+                    logger.warning(
+                        "AI Veto Gate triggered for %s %s: %s. Order execution blocked.",
+                        sym,
+                        target_action,
+                        ai_ctx.get("veto_reason"),
+                    )
+                    continue
+
+                # 4.5. Dynamic Balance-Aware Position Sizing
+                adjusted_risk_pct = risk_pct * float(ai_ctx.get("risk_multiplier", 1.0))
+                try:
+                    spec = await connection.get_symbol_specification(actual_sym)
+                    min_vol = float(spec.get("minVolume", 0.01))
+                    max_vol = float(spec.get("maxVolume", 50.0))
+                    vol_step = float(spec.get("volumeStep", 0.01))
+                    digits = int(spec.get("digits", 5))
+                    pip_size = float(spec.get("pipSize", 0.0001))
+                except Exception:
+                    min_vol, max_vol, vol_step, digits, pip_size = 0.01, 50.0, 0.01, 5, 0.0001
+
+                sized_volume = (
+                    volume
+                    if volume is not None
+                    else calculate_position_size(
+                        equity=equity,
+                        risk_pct=adjusted_risk_pct,
+                        sl_pips=sl_pips,
+                        min_volume=min_vol,
+                        max_volume=max_vol,
+                        volume_step=vol_step,
+                    )
+                )
+
+                leverage = float(acct_info.get("leverage", 100))
+                approx_req_margin = (sized_volume * 100000.0) / max(1.0, leverage)
+                margin_passed, margin_reason = await check_risk_guardrails(
+                    connection=connection,
+                    symbol=actual_sym,
+                    lot_size=sized_volume,
+                    max_open_trades=max_open_trades,
+                    free_margin=free_margin,
+                    required_margin=approx_req_margin,
+                )
+                if not margin_passed:
+                    logger.warning("Order on %s halted by margin check: %s", actual_sym, margin_reason)
+                    continue
+
+                # 4.6. Enforce Stop Loss and Take Profit Brackets
+                try:
+                    price_info = await connection.get_symbol_price(actual_sym)
+                    entry = (
+                        float(price_info.get("ask" if target_action.upper() == "BUY" else "bid", 1.0))
+                        if price_info
+                        else 1.08500
+                    )
+                except Exception:
+                    entry = 1.08500
+
+                if target_action.upper() == "BUY":
+                    calc_sl = round(entry - (sl_pips * pip_size), digits)
+                    calc_tp = round(entry + (tp_pips * pip_size), digits)
+                else:
+                    calc_sl = round(entry + (sl_pips * pip_size), digits)
+                    calc_tp = round(entry - (tp_pips * pip_size), digits)
+
+                # 4.7. Execute Market Order Directly via MetaApi RPC Connection
+                if execute_order:
+                    logger.info(
+                        "Dispatched Market Order: %s %s (%.2f lots, SL: %s, TP: %s) via MetaApi RPC...",
+                        target_action,
+                        actual_sym,
+                        sized_volume,
+                        calc_sl,
+                        calc_tp,
+                    )
+                    await execute_market_order(
+                        connection=connection,
+                        symbol=actual_sym,
+                        volume=sized_volume,
+                        action=target_action,
+                        stop_loss=calc_sl,
+                        take_profit=calc_tp,
+                    )
+                    last_trade_time = time.time()
+                    order_executed_this_cycle = True
+                    logger.info(
+                        "Order confirmed in MetaTrader terminal. Initializing %s-second trade cooldown.",
+                        cooldown_seconds,
+                    )
+                    break
+                else:
+                    logger.info("Execution flag not set. Skipping live order dispatch.")
+
+            if not loop or (max_cycles and cycle_count >= max_cycles):
+                logger.info("Autonomous execution finished (%d cycle completed). Exiting.", cycle_count)
+                break
+
+            sleep_dur = cooldown_seconds if order_executed_this_cycle else interval_seconds
+            logger.info("Waiting %.1fs until next market scan cycle...", sleep_dur)
+            await asyncio.sleep(sleep_dur)
 
     except Exception as exc:
         handle_metaapi_auth_error(exc, token)
@@ -669,20 +785,47 @@ async def run_trading_robot(
 
 def main():
     """Command-line interface entry point."""
-    parser = argparse.ArgumentParser(description="MetaApi Cloud Trading Robot")
-    parser.add_argument("--symbol", default="EURUSD", help="Symbol to trade (default: EURUSD)")
+    parser = argparse.ArgumentParser(description="MetaApi Cloud Autonomous Trading Robot")
+    parser.add_argument(
+        "--symbols",
+        default="EURUSD,GBPUSD,USDJPY,USDZAR",
+        help="Comma-separated symbols to monitor (default: EURUSD,GBPUSD,USDJPY,USDZAR)",
+    )
+    parser.add_argument("--symbol", help="Single symbol shorthand (overrides --symbols if specified)")
     parser.add_argument(
         "--volume",
         type=float,
         default=None,
-        help="Optional lot size override (if omitted, dynamically calculated)",
+        help="Optional lot size override (if omitted, dynamically calculated based on account equity)",
     )
-    parser.add_argument("--action", choices=["BUY", "SELL"], default="BUY", help="Order action (default: BUY)")
+    parser.add_argument(
+        "--action",
+        choices=["BUY", "SELL"],
+        default=None,
+        help="Optional manual order action override (default: dynamic strategy evaluation)",
+    )
     parser.add_argument("--account-id", help="MetaApi Account ID (default: read from METAAPI_ACCOUNT_ID in .env)")
     parser.add_argument(
         "--info-only",
         action="store_true",
-        help="Only display account information without placing a market order",
+        help="Only display account information without placing market orders",
+    )
+    parser.add_argument(
+        "--loop",
+        action="store_true",
+        help="Run continuously in an autonomous market monitoring loop",
+    )
+    parser.add_argument(
+        "--interval",
+        type=float,
+        default=30.0,
+        help="Interval in seconds between scan cycles in loop mode (default: 30s)",
+    )
+    parser.add_argument(
+        "--cooldown",
+        type=float,
+        default=60.0,
+        help="Cooldown waiting period in seconds between trade executions (default: 60s)",
     )
     parser.add_argument(
         "--risk-pct",
@@ -703,6 +846,12 @@ def main():
         help="Daily drawdown percentage circuit breaker threshold (default: 5.0%%)",
     )
     parser.add_argument(
+        "--min-confidence",
+        type=float,
+        default=65.0,
+        help="Minimum signal confidence threshold to trigger a trade (default: 65.0%%)",
+    )
+    parser.add_argument(
         "--sl-pips",
         type=float,
         default=25.0,
@@ -717,10 +866,12 @@ def main():
 
     args = parser.parse_args()
 
+    symbol_list = [args.symbol] if args.symbol else [s.strip().upper() for s in args.symbols.split(",") if s.strip()]
+
     try:
         asyncio.run(
             run_trading_robot(
-                symbol=args.symbol,
+                symbols=symbol_list,
                 volume=args.volume,
                 action=args.action,
                 account_id=args.account_id,
@@ -730,10 +881,14 @@ def main():
                 max_drawdown_pct=args.max_drawdown_pct,
                 sl_pips=args.sl_pips,
                 tp_pips=args.tp_pips,
+                min_confidence=args.min_confidence,
+                loop=args.loop,
+                interval_seconds=args.interval,
+                cooldown_seconds=args.cooldown,
             )
         )
     except KeyboardInterrupt:
-        logger.info("Robot operation terminated by user.")
+        logger.info("Autonomous robot loop terminated by user.")
     except Exception as exc:
         if not handle_metaapi_auth_error(exc, os.getenv("METAAPI_TOKEN")):
             logger.error("Fatal robot error: %s", exc)
