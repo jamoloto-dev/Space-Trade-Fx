@@ -79,6 +79,29 @@ def test_live_scanner_fallback_scalping():
     assert scalp_res["indicators"]["ema13"] is not None
 
 
+def test_live_scanner_fallback_when_yfinance_uninstalled(monkeypatch):
+    """Verify LiveMarketScanner gracefully handles ModuleNotFoundError for yfinance without UnboundLocalError."""
+    import builtins
+
+    orig_import = builtins.__import__
+
+    def mock_import(name, *args, **kwargs):
+        if name == "yfinance":
+            raise ModuleNotFoundError("No module named 'yfinance'")
+        return orig_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", mock_import)
+
+    scanner = LiveMarketScanner(cache_ttl_seconds=0)
+    res_swing = scanner.analyze_signal("EURUSD", timeframe="1H")
+    assert res_swing["trading_mode"] == "swing"
+    assert res_swing["data_mode"] == "live_fallback"
+
+    res_scalp = scanner.analyze_signal("EURUSD", timeframe="5M")
+    assert res_scalp["trading_mode"] == "scalping"
+    assert res_scalp["data_mode"] == "live_fallback"
+
+
 def test_toggle_trading_mode_api(app_and_client):
     """Verify POST /api/trading/toggle-mode toggles mode and updates timeframe."""
     app, client, user = app_and_client

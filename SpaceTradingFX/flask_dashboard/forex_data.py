@@ -509,13 +509,13 @@ class LiveMarketScanner:
 
         symbol_clean = str(currency_pair).strip().upper()
         ticker_symbol = self.TICKER_MAP.get(symbol_clean, f"{symbol_clean}=X")
+        is_scalping = str(timeframe).strip().upper() in {"1M", "5M", "M1", "M5"}
 
         try:
             import pandas as pd
             import yfinance as yf
 
             ticker = yf.Ticker(ticker_symbol)
-            is_scalping = str(timeframe).strip().upper() in {"1M", "5M", "M1", "M5"}
             yf_interval = "5m" if is_scalping else "1h"
             period = "2d" if is_scalping else "5d"
             df = ticker.history(period=period, interval=yf_interval)
