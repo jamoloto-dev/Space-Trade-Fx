@@ -1141,35 +1141,42 @@ def main():
 
     symbol_list = [args.symbol] if args.symbol else [s.strip().upper() for s in args.symbols.split(",") if s.strip()]
 
-    try:
-        asyncio.run(
-            run_trading_robot(
-                symbols=symbol_list,
-                volume=args.volume,
-                action=args.action,
-                account_id=args.account_id,
-                execute_order=not args.info_only,
-                risk_pct=args.risk_pct,
-                max_open_trades=args.max_open_trades,
-                max_drawdown_pct=args.max_drawdown_pct,
-                sl_pips=args.sl_pips,
-                tp_pips=args.tp_pips,
-                min_confidence=args.min_confidence,
-                loop=args.loop,
-                interval_seconds=args.interval,
-                cooldown_seconds=args.cooldown,
-                monitor_positions=args.monitor,
-                monitor_interval=args.monitor_interval,
-                tp_pnl=args.tp_pnl,
-                sl_pnl=args.sl_pnl,
+    while True:
+        try:
+            asyncio.run(
+                run_trading_robot(
+                    symbols=symbol_list,
+                    volume=args.volume,
+                    action=args.action,
+                    account_id=args.account_id,
+                    execute_order=not args.info_only,
+                    risk_pct=args.risk_pct,
+                    max_open_trades=args.max_open_trades,
+                    max_drawdown_pct=args.max_drawdown_pct,
+                    sl_pips=args.sl_pips,
+                    tp_pips=args.tp_pips,
+                    min_confidence=args.min_confidence,
+                    loop=args.loop,
+                    interval_seconds=args.interval,
+                    cooldown_seconds=args.cooldown,
+                    monitor_positions=args.monitor,
+                    monitor_interval=args.monitor_interval,
+                    tp_pnl=args.tp_pnl,
+                    sl_pnl=args.sl_pnl,
+                )
             )
-        )
-    except KeyboardInterrupt:
-        logger.info("Autonomous robot loop terminated by user.")
-    except Exception as exc:
-        if not handle_metaapi_auth_error(exc, os.getenv("METAAPI_TOKEN")):
-            logger.error("Fatal robot error: %s", exc)
-        sys.exit(1)
+            if not args.loop:
+                break
+        except KeyboardInterrupt:
+            logger.info("Autonomous robot loop terminated by user.")
+            break
+        except Exception as exc:
+            if not handle_metaapi_auth_error(exc, os.getenv("METAAPI_TOKEN")):
+                logger.error("Notice encountered in robot worker: %s", exc)
+            if not args.loop:
+                sys.exit(1)
+            logger.info("Auto-reconnecting robot loop in %.1fs...", args.interval)
+            time.sleep(args.interval)
 
 
 if __name__ == "__main__":
