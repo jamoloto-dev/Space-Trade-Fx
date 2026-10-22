@@ -37,8 +37,9 @@ schedule>=1.2.0
 # Payment Processing
 stripe>=12.0.0
 
-# Trading (Optional - Windows only)
-# MetaTrader5>=5.0.0
+# Trading Integrations
+metaapi-cloud-sdk>=29.0.0
+# MetaTrader5>=5.0.0 (Windows only)
 
 # Environment & Configuration
 python-dotenv>=1.0.0

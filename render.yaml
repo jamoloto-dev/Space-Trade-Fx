@@ -1,0 +1,48 @@
+# Render Blueprint Specification for SpaceTradingFX
+# Docs: https://render.com/docs/blueprint-spec
+
+services:
+  # ---------------------------------------------------------------------------
+  # Background Worker: MetaApi Autonomous Trading Robot
+  # ---------------------------------------------------------------------------
+  - type: worker
+    name: spacetradingfx-robot
+    runtime: python
+    region: oregon
+    plan: starter # Render background workers require a paid plan (starter or higher)
+    buildCommand: pip install --upgrade pip && pip install -r requirements.txt
+    startCommand: python metaapi_robot.py --loop --interval 30 --cooldown 60
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.3
+      - key: METAAPI_TOKEN
+        sync: false # Set securely in Render dashboard
+      - key: METAAPI_ACCOUNT_ID
+        sync: false # Set securely in Render dashboard
+      - key: FLASK_SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        sync: false # Optional: connect to PostgreSQL database or SQLite default
+
+  # ---------------------------------------------------------------------------
+  # Web Service: SpaceTradingFX Flask Dashboard
+  # ---------------------------------------------------------------------------
+  - type: web
+    name: spacetradingfx-dashboard
+    runtime: python
+    region: oregon
+    plan: free # Can run on free or starter tier
+    buildCommand: pip install --upgrade pip && pip install -r requirements.txt
+    startCommand: gunicorn "flask_dashboard.app:create_app()" -w 2 -b 0.0.0.0:$PORT
+    healthCheckPath: /health/live
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.3
+      - key: METAAPI_TOKEN
+        sync: false
+      - key: METAAPI_ACCOUNT_ID
+        sync: false
+      - key: FLASK_SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        sync: false
