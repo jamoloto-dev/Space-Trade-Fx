@@ -735,7 +735,7 @@ async def run_trading_robot(
     monitor_interval: float = 10.0,
     tp_pnl: float | None = None,
     sl_pnl: float | None = None,
-    auto_be: bool = True,
+    auto_be: bool = False,
     be_trigger_pips: float = 20.0,
     be_buffer_pips: float = 2.0,
 ) -> None:
@@ -1185,8 +1185,8 @@ def main():
     parser.add_argument(
         "--auto-be",
         action="store_true",
-        default=True,
-        help="Enable automated break-even trailing stop loss (default: True)",
+        default=False,
+        help="Enable automated break-even trailing stop loss (default: False)",
     )
     parser.add_argument(
         "--no-auto-be",
