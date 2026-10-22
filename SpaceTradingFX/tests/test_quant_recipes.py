@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from analytics.order_flow import OrderFlowEngine
+from analytics.trailing_stop import TrailingStopManager
 from models.signal_engine import SignalEngine
 
 
@@ -148,3 +149,112 @@ class TestSignalEngine:
 
         rec_even = engine.log_trade_outcome(symbol="EURUSD", actual_profit=0.0, confidence=72.0, ticket="12347")
         assert rec_even["outcome"] == "BREAKEVEN"
+
+
+class TestTrailingStopManager:
+    """Tests for TrailingStopManager (Break-Even Trailing Stop)."""
+
+    def test_initialization(self):
+        manager = TrailingStopManager(trigger_pips=15.0, buffer_pips=1.5)
+        assert manager.trigger_pips == 15.0
+        assert manager.buffer_pips == 1.5
+        assert len(manager.modified_tickets) == 0
+
+    def test_buy_position_below_trigger(self):
+        manager = TrailingStopManager(trigger_pips=20.0, buffer_pips=2.0)
+        pos = {
+            "id": "101",
+            "symbol": "EURUSD",
+            "type": "POSITION_TYPE_BUY",
+            "openPrice": 1.10000,
+            "stopLoss": 1.09750,
+        }
+        # Current price = 1.10100 -> profit is 10 pips (< 20 trigger)
+        res = manager.evaluate_and_trail(pos, current_market_price=1.10100)
+        assert res["should_modify"] is False
+        assert res["profit_pips"] == 10.0
+        assert res["new_stop_loss"] == 1.09750
+
+    def test_buy_position_hits_trigger_moves_to_break_even(self):
+        manager = TrailingStopManager(trigger_pips=20.0, buffer_pips=2.0)
+        pos = {
+            "id": "102",
+            "symbol": "EURUSD",
+            "type": "BUY",
+            "openPrice": 1.10000,
+            "stopLoss": 1.09750,
+        }
+        # Current price = 1.10250 -> profit is 25 pips (>= 20 trigger)
+        # Expected new SL = open (1.10000) + 2 pips buffer (0.00020) = 1.10020
+        res = manager.evaluate_and_trail(pos, current_market_price=1.10250)
+        assert res["should_modify"] is True
+        assert res["profit_pips"] == 25.0
+        assert res["new_stop_loss"] == 1.10020
+        assert manager.is_already_modified("102") is True
+
+    def test_buy_position_already_at_break_even_no_modify(self):
+        manager = TrailingStopManager(trigger_pips=20.0, buffer_pips=2.0)
+        pos = {
+            "id": "103",
+            "symbol": "EURUSD",
+            "type": "BUY",
+            "openPrice": 1.10000,
+            "stopLoss": 1.10020,  # Already at or above break-even + buffer
+        }
+        res = manager.evaluate_and_trail(pos, current_market_price=1.10300)
+        assert res["should_modify"] is False
+        assert res["new_stop_loss"] == 1.10020
+
+    def test_sell_position_hits_trigger_moves_to_break_even(self):
+        manager = TrailingStopManager(trigger_pips=20.0, buffer_pips=2.0)
+        pos = {
+            "id": "201",
+            "symbol": "GBPUSD",
+            "type": "POSITION_TYPE_SELL",
+            "openPrice": 1.30000,
+            "stopLoss": 1.30250,
+        }
+        # Current price = 1.29750 -> profit is 25 pips (>= 20 trigger)
+        # Expected new SL = open (1.30000) - 2 pips buffer (0.00020) = 1.29980
+        res = manager.evaluate_and_trail(pos, current_market_price=1.29750)
+        assert res["should_modify"] is True
+        assert res["profit_pips"] == 25.0
+        assert res["new_stop_loss"] == 1.29980
+        assert manager.is_already_modified("201") is True
+
+    def test_sell_position_below_trigger(self):
+        manager = TrailingStopManager(trigger_pips=20.0, buffer_pips=2.0)
+        pos = {
+            "id": "202",
+            "symbol": "GBPUSD",
+            "type": "SELL",
+            "openPrice": 1.30000,
+            "stopLoss": 1.30250,
+        }
+        # Current price = 1.29850 -> profit is 15 pips (< 20 trigger)
+        res = manager.evaluate_and_trail(pos, current_market_price=1.29850)
+        assert res["should_modify"] is False
+        assert res["profit_pips"] == 15.0
+
+    def test_jpy_pair_pip_calculation(self):
+        manager = TrailingStopManager(trigger_pips=20.0, buffer_pips=2.0)
+        pos = {
+            "id": "301",
+            "symbol": "USDJPY",
+            "type": "BUY",
+            "openPrice": 150.000,
+            "stopLoss": 149.500,
+        }
+        # Current price = 150.250 -> profit is 25 pips (pip_size = 0.01)
+        # Expected new SL = 150.000 + (2 * 0.01) = 150.020
+        res = manager.evaluate_and_trail(pos, current_market_price=150.250, digits=3)
+        assert res["should_modify"] is True
+        assert res["profit_pips"] == 25.0
+        assert res["new_stop_loss"] == 150.020
+
+    def test_clear_ticket(self):
+        manager = TrailingStopManager()
+        manager.mark_modified("999")
+        assert manager.is_already_modified("999") is True
+        manager.clear_ticket("999")
+        assert manager.is_already_modified("999") is False

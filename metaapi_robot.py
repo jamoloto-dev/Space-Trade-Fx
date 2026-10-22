@@ -40,6 +40,11 @@ try:
 except ImportError:
     SignalEngine = None  # type: ignore[assignment,misc]
 
+try:
+    from analytics.trailing_stop import TrailingStopManager
+except ImportError:
+    TrailingStopManager = None  # type: ignore[assignment,misc]
+
 
 def setup_logging(log_file: str = "metaapi_robot.log") -> logging.Logger:
     """Configure comprehensive console and rotating file logging."""
@@ -460,6 +465,7 @@ async def monitor_open_positions(
     tp_pnl: float | None = None,
     sl_pnl: float | None = None,
     max_cycles: int | None = None,
+    trailing_manager: TrailingStopManager | None = None,
 ) -> list[dict[str, Any]]:
     """Periodically fetch all open positions, log telemetry and P/L, and enforce TP/SL exits."""
     logger.info("📡 Position monitoring background worker started (interval: %.1fs)...", interval)
@@ -594,6 +600,37 @@ async def monitor_open_positions(
                             )
                         except Exception as close_err:
                             logger.error("❌ Failed to close position #%s: %s", pos_id, close_err)
+                    elif trailing_manager:
+                        # 3. Automated Break-Even & Trailing Stop Management
+                        try:
+                            be_eval = trailing_manager.evaluate_and_trail(
+                                position=pos,
+                                current_market_price=curr_price,
+                            )
+                            if be_eval.get("should_modify"):
+                                new_be_sl = be_eval["new_stop_loss"]
+                                logger.info(
+                                    "🛡️ [BREAK-EVEN TRAILING STOP] Position #%s (%s): %s",
+                                    pos_id,
+                                    symbol,
+                                    be_eval.get("reason"),
+                                )
+                                await connection.modify_position(
+                                    position_id=pos_id,
+                                    stop_loss=new_be_sl,
+                                    take_profit=tp,
+                                )
+                                logger.info(
+                                    "✅ Position #%s SL successfully updated to Break-Even (%.5f)!",
+                                    pos_id,
+                                    new_be_sl,
+                                )
+                        except Exception as trail_exc:
+                            logger.error(
+                                "❌ Failed to modify break-even SL for position #%s: %s",
+                                pos_id,
+                                trail_exc,
+                            )
 
         except Exception as exc:
             # Resilience: Catch network hiccups and transient errors without crashing
@@ -698,6 +735,9 @@ async def run_trading_robot(
     monitor_interval: float = 10.0,
     tp_pnl: float | None = None,
     sl_pnl: float | None = None,
+    auto_be: bool = True,
+    be_trigger_pips: float = 20.0,
+    be_buffer_pips: float = 2.0,
 ) -> None:
     """Core autonomous trading loop: monitor telemetry, evaluate AI signals, manage risk, and trade."""
     token, env_account_id = load_credentials()
@@ -729,6 +769,11 @@ async def run_trading_robot(
 
     order_flow = OrderFlowEngine(window_size=100) if OrderFlowEngine else None
     signal_engine = SignalEngine(confidence_threshold=min_confidence / 100.0) if SignalEngine else None
+    trailing_manager = (
+        TrailingStopManager(trigger_pips=be_trigger_pips, buffer_pips=be_buffer_pips)
+        if (auto_be and TrailingStopManager)
+        else None
+    )
 
     try:
         # Step 1: Resolve Account
@@ -769,6 +814,7 @@ async def run_trading_robot(
                     stop_event=stop_event,
                     tp_pnl=tp_pnl,
                     sl_pnl=sl_pnl,
+                    trailing_manager=trailing_manager,
                 )
             )
 
@@ -1136,6 +1182,30 @@ def main():
         default=None,
         help="Floating Stop-Loss loss threshold in dollars to auto-close position (e.g. 3.0 for -$3)",
     )
+    parser.add_argument(
+        "--auto-be",
+        action="store_true",
+        default=True,
+        help="Enable automated break-even trailing stop loss (default: True)",
+    )
+    parser.add_argument(
+        "--no-auto-be",
+        dest="auto_be",
+        action="store_false",
+        help="Disable automated break-even trailing stop loss",
+    )
+    parser.add_argument(
+        "--be-trigger-pips",
+        type=float,
+        default=20.0,
+        help="Profit in pips required to trigger break-even stop (default: 20.0)",
+    )
+    parser.add_argument(
+        "--be-buffer-pips",
+        type=float,
+        default=2.0,
+        help="Buffer in pips past entry to lock in for spread/commissions (default: 2.0)",
+    )
 
     args = parser.parse_args()
 
@@ -1163,6 +1233,9 @@ def main():
                     monitor_interval=args.monitor_interval,
                     tp_pnl=args.tp_pnl,
                     sl_pnl=args.sl_pnl,
+                    auto_be=args.auto_be,
+                    be_trigger_pips=args.be_trigger_pips,
+                    be_buffer_pips=args.be_buffer_pips,
                 )
             )
             if not args.loop:

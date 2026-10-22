@@ -433,3 +433,44 @@ def test_monitor_open_positions_stop_event():
     )
     assert closed == []
     assert mock_conn.get_positions.await_count == 0
+
+
+def test_monitor_open_positions_break_even_trailing():
+    from analytics.trailing_stop import TrailingStopManager
+
+    mock_conn = MagicMock()
+    # Open BUY position with 25 pips of profit
+    mock_conn.get_positions = AsyncMock(
+        return_value=[
+            {
+                "id": "5555",
+                "symbol": "EURUSD.ifx",
+                "type": "BUY",
+                "volume": 0.01,
+                "openPrice": 1.10000,
+                "currentPrice": 1.10250,
+                "stopLoss": 1.09750,
+                "takeProfit": 1.10500,
+                "profit": 2.50,
+            }
+        ]
+    )
+    mock_conn.modify_position = AsyncMock(return_value={"orderId": "mod_ok", "numericCode": 10009})
+    trailing_mgr = TrailingStopManager(trigger_pips=20.0, buffer_pips=2.0)
+
+    closed = asyncio.run(
+        metaapi_robot.monitor_open_positions(
+            connection=mock_conn,
+            interval=0.01,
+            max_cycles=1,
+            trailing_manager=trailing_mgr,
+        )
+    )
+
+    assert closed == []  # Not closed, but modified
+    mock_conn.modify_position.assert_awaited_once_with(
+        position_id="5555",
+        stop_loss=1.10020,
+        take_profit=1.10500,
+    )
+    assert trailing_mgr.is_already_modified("5555") is True
