@@ -674,6 +674,10 @@ def api_trading_toggle_auto_pilot():
     strategy["auto_pilot"] = new_state
     strategy["automated_broker_trading"] = new_state
     strategy["min_confidence"] = 65
+    if new_state:
+        strategy["circuit_breaker_tripped"] = False
+        strategy["circuit_breaker_date"] = None
+        strategy["circuit_breaker_pnl"] = "0.00"
     prefs.strategy_settings = strategy
 
     db.session.commit()
