@@ -1,14 +1,14 @@
-# Render Blueprint Specification for SpaceTradingFX
+# Render Blueprint Specification for QuantBot & SpaceTradingFX
 # Docs: https://render.com/docs/blueprint-spec
 
 services:
   # ---------------------------------------------------------------------------
-  # Background Worker: MetaApi Autonomous Trading Robot
+  # Recipe 4: Background Worker - QuantBot MetaApi Autonomous Trading Robot
   # ---------------------------------------------------------------------------
   - type: worker
-    name: spacetradingfx-robot
+    name: quantbot-background-worker
     runtime: python
-    region: oregon
+    region: frankfurt
     plan: starter # Render background workers require a paid plan (starter or higher)
     buildCommand: pip install --upgrade pip && pip install -r requirements.txt
     startCommand: python metaapi_robot.py --loop --interval 30 --cooldown 60
@@ -17,32 +17,29 @@ services:
         value: 3.12.3
       - key: METAAPI_TOKEN
         sync: false # Set securely in Render dashboard
-      - key: METAAPI_ACCOUNT_ID
+      - key: ACCOUNT_ID
         sync: false # Set securely in Render dashboard
+      - key: METAAPI_ACCOUNT_ID
+        sync: false # Alias for account ID
       - key: FLASK_SECRET_KEY
         generateValue: true
       - key: DATABASE_URL
-        sync: false # Optional: connect to PostgreSQL database or SQLite default
+        sync: false
 
   # ---------------------------------------------------------------------------
-  # Web Service: SpaceTradingFX Flask Dashboard
+  # Recipe 3: Advanced Telemetry & Visualization Terminal (Streamlit)
   # ---------------------------------------------------------------------------
   - type: web
-    name: spacetradingfx-dashboard
+    name: quantbot-dashboard
     runtime: python
-    region: oregon
+    region: frankfurt
     plan: free # Can run on free or starter tier
     buildCommand: pip install --upgrade pip && pip install -r requirements.txt
-    startCommand: gunicorn "flask_dashboard.app:create_app()" -w 2 -b 0.0.0.0:$PORT
-    healthCheckPath: /health/live
+    startCommand: streamlit run dashboard/app.py --server.port $PORT --server.address 0.0.0.0 --server.headless true
     envVars:
       - key: PYTHON_VERSION
         value: 3.12.3
       - key: METAAPI_TOKEN
         sync: false
       - key: METAAPI_ACCOUNT_ID
-        sync: false
-      - key: FLASK_SECRET_KEY
-        generateValue: true
-      - key: DATABASE_URL
         sync: false

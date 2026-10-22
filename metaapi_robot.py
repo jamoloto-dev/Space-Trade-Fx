@@ -30,6 +30,16 @@ try:
 except ImportError:
     MetaApi = None  # type: ignore[assignment,misc]
 
+try:
+    from analytics.order_flow import OrderFlowEngine
+except ImportError:
+    OrderFlowEngine = None  # type: ignore[assignment,misc]
+
+try:
+    from models.signal_engine import SignalEngine
+except ImportError:
+    SignalEngine = None  # type: ignore[assignment,misc]
+
 
 def setup_logging(log_file: str = "metaapi_robot.log") -> logging.Logger:
     """Configure comprehensive console and rotating file logging."""
@@ -717,6 +727,9 @@ async def run_trading_robot(
     stop_event = asyncio.Event()
     monitor_task = None
 
+    order_flow = OrderFlowEngine(window_size=100) if OrderFlowEngine else None
+    signal_engine = SignalEngine(confidence_threshold=min_confidence / 100.0) if SignalEngine else None
+
     try:
         # Step 1: Resolve Account
         resolved_id = await resolve_account_id(api, target_account_id)
@@ -856,6 +869,42 @@ async def run_trading_robot(
                     )
                     continue
 
+                # Ingest real-time price into Order Flow Analytics Engine
+                try:
+                    price_info = await connection.get_symbol_price(actual_sym)
+                except Exception:
+                    price_info = None
+
+                if price_info and order_flow:
+                    order_flow.ingest_metaapi_price(price_info)
+
+                # Order Flow Imbalance & ML Signal Confidence Scoring
+                final_confidence = confidence
+                if signal_engine and not action:
+                    of_imbalance = order_flow.calculate_imbalance() if order_flow else 0.0
+                    macro_sent = (
+                        float(ai_ctx.get("sentiment", {}).get("score", 0.0))
+                        if isinstance(ai_ctx.get("sentiment"), dict)
+                        else 0.0
+                    )
+                    ml_eval = signal_engine.evaluate_signal(
+                        order_flow_imbalance=of_imbalance,
+                        technical_score=confidence,
+                        macro_sentiment=macro_sent,
+                        symbol=actual_sym,
+                        direction=target_action,
+                    )
+                    final_confidence = float(ml_eval.get("confidence", confidence))
+                    if not ml_eval.get("execute", True):
+                        logger.info(
+                            "ML Signal Confidence %.1f%% below threshold %.1f%% for %s %s. Skipping order.",
+                            final_confidence,
+                            ml_eval.get("threshold", min_confidence),
+                            actual_sym,
+                            target_action,
+                        )
+                        continue
+
                 # 5.5. Dynamic Balance-Aware Position Sizing
                 adjusted_risk_pct = risk_pct * float(ai_ctx.get("risk_multiplier", 1.0))
                 try:
@@ -923,7 +972,7 @@ async def run_trading_robot(
                         calc_sl,
                         calc_tp,
                     )
-                    await execute_market_order(
+                    trade_res = await execute_market_order(
                         connection=connection,
                         symbol=actual_sym,
                         volume=sized_volume,
@@ -931,6 +980,14 @@ async def run_trading_robot(
                         stop_loss=calc_sl,
                         take_profit=calc_tp,
                     )
+                    if signal_engine and trade_res:
+                        ticket_id = str(trade_res.get("orderId") or trade_res.get("numericCode") or "")
+                        signal_engine.log_trade_outcome(
+                            symbol=actual_sym,
+                            actual_profit=0.0,
+                            confidence=final_confidence,
+                            ticket=ticket_id,
+                        )
                     last_trade_time = time.time()
                     order_executed_this_cycle = True
                     logger.info(
