@@ -252,6 +252,40 @@ class TestTrailingStopManager:
         assert res["profit_pips"] == 25.0
         assert res["new_stop_loss"] == 150.020
 
+    def test_usdzar_pair_pip_calculation_buy(self):
+        manager = TrailingStopManager(trigger_pips=20.0, buffer_pips=2.0)
+        pos = {
+            "id": "401",
+            "symbol": "USDZAR.ifx",
+            "type": "POSITION_TYPE_BUY",
+            "openPrice": 16.480,
+            "stopLoss": 16.230,
+        }
+        # Current price = 16.730 -> profit is 25 pips (0.25 / 0.01 = 25 pips)
+        # Expected new SL = 16.480 + (2.0 * 0.01) = 16.500
+        res = manager.evaluate_and_trail(pos, current_market_price=16.730)
+        assert res["should_modify"] is True
+        assert res["profit_pips"] == 25.0
+        assert res["new_stop_loss"] == 16.500
+        assert manager.is_already_modified("401") is True
+
+    def test_usdzar_pair_pip_calculation_sell(self):
+        manager = TrailingStopManager(trigger_pips=20.0, buffer_pips=2.0)
+        pos = {
+            "id": "402",
+            "symbol": "USDZAR",
+            "type": "SELL",
+            "openPrice": 16.500,
+            "stopLoss": 16.750,
+        }
+        # Current price = 16.250 -> profit is 25 pips (0.25 / 0.01 = 25 pips)
+        # Expected new SL = 16.500 - (2.0 * 0.01) = 16.480
+        res = manager.evaluate_and_trail(pos, current_market_price=16.250)
+        assert res["should_modify"] is True
+        assert res["profit_pips"] == 25.0
+        assert res["new_stop_loss"] == 16.480
+        assert manager.is_already_modified("402") is True
+
     def test_clear_ticket(self):
         manager = TrailingStopManager()
         manager.mark_modified("999")

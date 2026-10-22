@@ -62,15 +62,16 @@ class TrailingStopManager:
                 "reason": "Invalid position entry price",
             }
 
-        # Resolve pip size if not provided
+        # Resolve pip size and digits for 3-decimal pairs (JPY, ZAR, metals) vs 5-decimal pairs
+        raw_sym = symbol.split(".")[0].upper()
+        is_three_digit = any(pair in raw_sym for pair in ["JPY", "ZAR", "XAU"]) or digits <= 3
+
         if pip_size is None or pip_size <= 0:
-            raw_sym = symbol.split(".")[0].upper()
-            if "JPY" in raw_sym or "XAU" in raw_sym or digits <= 3:
-                resolved_pip_size = 0.01
-            else:
-                resolved_pip_size = 0.0001
+            resolved_pip_size = 0.01 if is_three_digit else 0.0001
         else:
             resolved_pip_size = float(pip_size)
+
+        resolved_digits = 3 if (is_three_digit and digits == 5) else digits
 
         is_buy = "BUY" in pos_type
         should_modify = False
@@ -79,7 +80,7 @@ class TrailingStopManager:
 
         if is_buy:
             profit_pips = (current_market_price - open_price) / resolved_pip_size
-            target_break_even = round(open_price + (self.buffer_pips * resolved_pip_size), digits)
+            target_break_even = round(open_price + (self.buffer_pips * resolved_pip_size), resolved_digits)
 
             # Trigger condition: profit >= trigger and SL not yet at or beyond break-even
             if profit_pips >= self.trigger_pips and (current_sl == 0.0 or current_sl < target_break_even):
@@ -87,11 +88,11 @@ class TrailingStopManager:
                 should_modify = True
                 reason = (
                     f"BUY profit (+{profit_pips:.1f} pips) >= trigger ({self.trigger_pips:.1f} pips). "
-                    f"Locking Break-Even SL at {target_break_even:.{digits}f} (+{self.buffer_pips:.1f} buffer pips)."
+                    f"Locking Break-Even SL at {target_break_even:.{resolved_digits}f} (+{self.buffer_pips:.1f} buffer pips)."
                 )
         else:
             profit_pips = (open_price - current_market_price) / resolved_pip_size
-            target_break_even = round(open_price - (self.buffer_pips * resolved_pip_size), digits)
+            target_break_even = round(open_price - (self.buffer_pips * resolved_pip_size), resolved_digits)
 
             # Trigger condition: profit >= trigger and SL not yet at or beyond break-even
             if profit_pips >= self.trigger_pips and (current_sl == 0.0 or current_sl > target_break_even):
@@ -99,7 +100,7 @@ class TrailingStopManager:
                 should_modify = True
                 reason = (
                     f"SELL profit (+{profit_pips:.1f} pips) >= trigger ({self.trigger_pips:.1f} pips). "
-                    f"Locking Break-Even SL at {target_break_even:.{digits}f} (+{self.buffer_pips:.1f} buffer pips)."
+                    f"Locking Break-Even SL at {target_break_even:.{resolved_digits}f} (+{self.buffer_pips:.1f} buffer pips)."
                 )
 
         if should_modify and ticket:
