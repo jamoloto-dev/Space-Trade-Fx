@@ -166,6 +166,7 @@ def test_daily_loss_circuit_breaker(app, risk_user):
 
         # Reset circuit breaker
         from datetime import datetime, timezone
+
         strat = dict(prefs.strategy_settings or {})
         strat["circuit_breaker_tripped"] = False
         strat["circuit_breaker_date"] = None

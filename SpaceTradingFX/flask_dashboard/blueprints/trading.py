@@ -695,7 +695,6 @@ def api_trading_toggle_auto_pilot():
 @login_required
 def api_trading_reset_circuit_breaker():
     """Reset daily loss circuit breaker and resume auto-pilot trading."""
-    from datetime import datetime, timezone
     from ..extensions import db
     from ..models import TradingPreference
 
@@ -715,11 +714,13 @@ def api_trading_reset_circuit_breaker():
     prefs.strategy_settings = strategy
 
     db.session.commit()
-    return jsonify({
-        "success": True,
-        "message": "Daily drawdown circuit breaker reset successfully. Auto-Pilot resumed.",
-        "enabled": True,
-    }), 200
+    return jsonify(
+        {
+            "success": True,
+            "message": "Daily drawdown circuit breaker reset successfully. Auto-Pilot resumed.",
+            "enabled": True,
+        }
+    ), 200
 
 
 @trading_bp.route("/api/quotes/update-config", methods=["POST"])
