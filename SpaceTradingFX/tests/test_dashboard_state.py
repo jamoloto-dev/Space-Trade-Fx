@@ -169,6 +169,10 @@ def test_streamlit_dashboard_session_state_and_button_toggle(temp_workspace):
         # Check session state
         assert at.session_state["trading_active"] is True
 
+        # Check title
+        assert len(at.title) >= 1
+        assert "SpaceFXBot" in at.title[0].value
+
         # Check active status badge rendered in markdown
         active_markdown = [m.value for m in at.markdown if "ROBOT STATUS: ACTIVE" in m.value]
         assert len(active_markdown) == 1

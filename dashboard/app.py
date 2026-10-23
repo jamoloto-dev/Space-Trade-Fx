@@ -1,4 +1,4 @@
-"""⚡ QuantBot Advanced Telemetry & Execution Terminal.
+"""⚡ SpaceFXBot Advanced Telemetry & Execution Terminal.
 
 Comprehensive modern dashboard UI mirroring professional quant terminals:
 - Live Account Telemetry & P/L tracking (Balance, Equity, Free Margin, Drawdown)
@@ -25,7 +25,7 @@ if base_dir not in sys.path:
 from trading_state import load_execution_state, save_execution_state  # noqa: E402
 
 st.set_page_config(
-    page_title="QuantBot Terminal",
+    page_title="SpaceFXBot Advanced Telemetry & Execution Terminal",
     page_icon="⚡",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -142,8 +142,8 @@ telemetry, positions = load_db_telemetry()
 sym = telemetry["currency_symbol"]
 
 # Header
-st.title("⚡ QuantBot Advanced Telemetry & Execution Terminal")
-st.caption("Institutional-grade order flow analytics, ML confidence scoring, and MetaApi execution engine.")
+st.title("⚡ SpaceFXBot Advanced Telemetry & Execution Terminal")
+st.markdown("Institutional-grade order flow analytics, ML confidence scoring, and MetaApi execution engine.")
 
 # Top Telemetry Metrics
 col1, col2, col3, col4 = st.columns(4)
@@ -245,4 +245,4 @@ if not positions_df.empty:
 else:
     st.info("No open positions currently active on connected broker account.")
 
-st.caption("QuantBot Telemetry synchronized with MetaApi Cloud & SQLite ledger.")
+st.caption("SpaceFXBot Telemetry synchronized with MetaApi Cloud & SQLite ledger.")

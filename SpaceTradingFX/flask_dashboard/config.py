@@ -47,6 +47,13 @@ class Config:
     # License System
     LICENSE_MAX_ACTIVATIONS = int(os.environ.get("LICENSE_MAX_ACTIVATIONS", "3"))
 
+    # MetaApi Cloud Integration & Regional Routing
+    METAAPI_TOKEN = os.environ.get("METAAPI_TOKEN")
+    METAAPI_ACCOUNT_ID = os.environ.get("METAAPI_ACCOUNT_ID")
+    METAAPI_REGION = os.environ.get("METAAPI_REGION", "london").strip().lower()
+    METAAPI_CLIENT_URL = os.environ.get("METAAPI_CLIENT_URL")
+    METAAPI_CLIENT_HOST = os.environ.get("METAAPI_CLIENT_HOST")
+
     # Feature Flags
     ENABLE_GPT5_FOR_ALL_CLIENTS = os.environ.get("ENABLE_GPT5_FOR_ALL_CLIENTS", "true").lower() in ("1", "true", "yes")
 

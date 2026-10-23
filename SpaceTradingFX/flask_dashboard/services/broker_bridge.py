@@ -978,10 +978,25 @@ def verify_and_connect(
 def resolve_metaapi_client_base_url() -> str:
     """Resolve the MetaApi client API base URL without duplicated domain suffixes.
 
-    Prioritizes explicit host/URL configurations, region variables, and defaults
-    to the active regional endpoint (e.g. london) on 'agiliumtrade.ai'.
+    Prioritizes explicit host/URL configurations, dynamic Flask application config,
+    environment variables (e.g. METAAPI_REGION, METAAPI_CLIENT_URL, METAAPI_CLIENT_HOST),
+    and falls back to the active regional endpoint on 'agiliumtrade.ai'.
     """
-    custom_url = os.environ.get("METAAPI_CLIENT_URL") or os.environ.get("METAAPI_CLIENT_HOST")
+    custom_url = None
+    region = None
+
+    try:
+        from flask import current_app
+
+        if current_app:
+            custom_url = current_app.config.get("METAAPI_CLIENT_URL") or current_app.config.get("METAAPI_CLIENT_HOST")
+            region = current_app.config.get("METAAPI_REGION")
+    except Exception:
+        pass
+
+    if not custom_url:
+        custom_url = os.environ.get("METAAPI_CLIENT_URL") or os.environ.get("METAAPI_CLIENT_HOST")
+
     if custom_url:
         clean = custom_url.strip()
         if not clean.startswith("http://") and not clean.startswith("https://"):
@@ -990,8 +1005,11 @@ def resolve_metaapi_client_base_url() -> str:
         clean = clean.replace("agiliumtrade.agiliumtrade.ai", "agiliumtrade.ai")
         return clean.rstrip("/")
 
-    region = (os.environ.get("METAAPI_REGION") or "london").strip().lower()
-    return f"https://mt-client-api-v1.{region}.agiliumtrade.ai"
+    if not region:
+        region = os.environ.get("METAAPI_REGION") or "london"
+
+    clean_region = str(region).strip().lower()
+    return f"https://mt-client-api-v1.{clean_region}.agiliumtrade.ai"
 
 
 _test_ticket_counter = 1000

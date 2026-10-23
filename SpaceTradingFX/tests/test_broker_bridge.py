@@ -583,12 +583,21 @@ def test_resolve_metaapi_client_base_url_removes_duplicate_suffix(monkeypatch):
     monkeypatch.setenv("METAAPI_REGION", "vint-hill")
     assert resolve_metaapi_client_base_url() == "https://mt-client-api-v1.vint-hill.agiliumtrade.ai"
 
+    monkeypatch.setenv("METAAPI_REGION", "new-york")
+    assert resolve_metaapi_client_base_url() == "https://mt-client-api-v1.new-york.agiliumtrade.ai"
+
 
 def test_metaapi_cloud_trade_dispatch_uses_clean_url(app, monkeypatch):
     from unittest.mock import MagicMock, patch
 
     monkeypatch.setenv("METAAPI_TOKEN", "mock_metaapi_token_123")
     monkeypatch.setenv("METAAPI_ACCOUNT_ID", "mock_acc_999")
+    monkeypatch.delenv("METAAPI_CLIENT_HOST", raising=False)
+    monkeypatch.delenv("METAAPI_CLIENT_URL", raising=False)
+    app.config.pop("METAAPI_CLIENT_HOST", None)
+    app.config.pop("METAAPI_CLIENT_URL", None)
+    monkeypatch.setenv("METAAPI_REGION", "london")
+    app.config["METAAPI_REGION"] = "london"
     monkeypatch.setenv("METAAPI_REGION", "london")
 
     with app.app_context():
