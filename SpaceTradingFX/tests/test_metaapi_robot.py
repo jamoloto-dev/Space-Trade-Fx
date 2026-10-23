@@ -145,16 +145,24 @@ def test_resolve_tradable_symbol_with_suffix():
     mock_conn = MagicMock()
 
     async def mock_get_spec(sym):
-        if sym == "EURUSD":
+        if sym in {"EURUSD", "T100", "T100.ifx"}:
             return {"tradeMode": "SYMBOL_TRADE_MODE_DISABLED"}
         if sym == "EURUSD.ifx":
+            return {"tradeMode": "SYMBOL_TRADE_MODE_FULL"}
+        if sym == "T100.ifx_m":
             return {"tradeMode": "SYMBOL_TRADE_MODE_FULL"}
         return None
 
     mock_conn.get_symbol_specification = AsyncMock(side_effect=mock_get_spec)
 
-    resolved = asyncio.run(metaapi_robot.resolve_tradable_symbol(mock_conn, "EURUSD"))
-    assert resolved == "EURUSD.ifx"
+    resolved_eur = asyncio.run(metaapi_robot.resolve_tradable_symbol(mock_conn, "EURUSD"))
+    assert resolved_eur == "EURUSD.ifx"
+
+    resolved_t100 = asyncio.run(metaapi_robot.resolve_tradable_symbol(mock_conn, "T100"))
+    assert resolved_t100 == "T100.ifx_m"
+
+    resolved_t100_ifx = asyncio.run(metaapi_robot.resolve_tradable_symbol(mock_conn, "T100.ifx"))
+    assert resolved_t100_ifx == "T100.ifx_m"
 
 
 def test_calculate_position_size():

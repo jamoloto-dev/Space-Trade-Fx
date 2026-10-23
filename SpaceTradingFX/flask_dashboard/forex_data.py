@@ -488,6 +488,9 @@ class LiveMarketScanner:
         "EURUSD": "EURUSD=X",
         "XAUUSD": "GC=F",
         "USDZAR": "USDZAR=X",
+        "T100": "NQ=F",
+        "USTEC": "NQ=F",
+        "NAS100": "NQ=F",
     }
 
     FALLBACK_PRICES = {
@@ -496,6 +499,9 @@ class LiveMarketScanner:
         "EURUSD": 1.12270,
         "XAUUSD": 4132.50,
         "USDZAR": 16.4050,
+        "T100": 28960.0,
+        "USTEC": 28960.0,
+        "NAS100": 28960.0,
     }
 
     def __init__(self, cache_ttl_seconds: int = 30):
@@ -517,7 +523,8 @@ class LiveMarketScanner:
                 return data
 
         symbol_clean = str(currency_pair).strip().upper()
-        ticker_symbol = self.TICKER_MAP.get(symbol_clean, f"{symbol_clean}=X")
+        base_sym = symbol_clean.split(".")[0].rstrip("m").rstrip("_")
+        ticker_symbol = self.TICKER_MAP.get(symbol_clean, self.TICKER_MAP.get(base_sym, f"{base_sym}=X"))
         is_scalping = str(timeframe).strip().upper() in {"1M", "5M", "M1", "M5"}
 
         try:
@@ -684,7 +691,9 @@ class LiveMarketScanner:
                 strength = 0
 
             decimals = (
-                2 if symbol_clean == "XAUUSD" else (3 if "JPY" in symbol_clean else (4 if "ZAR" in symbol_clean else 5))
+                2
+                if symbol_clean in {"XAUUSD", "T100", "USTEC", "NAS100"}
+                else (3 if "JPY" in symbol_clean else (4 if "ZAR" in symbol_clean else 5))
             )
             # Tight Scalping vs Swing SL/TP scaling
             if is_scalping:
@@ -762,9 +771,18 @@ class LiveMarketScanner:
                 ticker_symbol,
                 exc,
             )
-            fallback_price = self.FALLBACK_PRICES.get(symbol_clean, 1.10000)
+            fallback_price = self.FALLBACK_PRICES.get(symbol_clean, self.FALLBACK_PRICES.get(base_sym, 1.10000))
             decimals = (
-                2 if symbol_clean == "XAUUSD" else (3 if "JPY" in symbol_clean else (4 if "ZAR" in symbol_clean else 5))
+                2
+                if (
+                    symbol_clean in {"XAUUSD", "T100", "USTEC", "NAS100"}
+                    or base_sym in {"XAUUSD", "T100", "USTEC", "NAS100"}
+                )
+                else (
+                    3
+                    if "JPY" in symbol_clean or "JPY" in base_sym
+                    else (4 if "ZAR" in symbol_clean or "ZAR" in base_sym else 5)
+                )
             )
 
             dir_pref = str(direction_preference or "BOTH").strip().upper()

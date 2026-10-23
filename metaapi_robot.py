@@ -426,7 +426,7 @@ async def check_risk_guardrails(
 
 
 async def resolve_tradable_symbol(connection, symbol: str) -> str:
-    """Resolve symbol to broker-specific tradable symbol if base symbol is disabled (e.g. EURUSD -> EURUSD.ifx)."""
+    """Resolve symbol to broker-specific tradable symbol if base symbol is disabled (e.g. EURUSD -> EURUSD.ifx or T100 -> T100.ifx_m)."""
     try:
         spec = await connection.get_symbol_specification(symbol)
         if spec and spec.get("tradeMode") in {
@@ -438,8 +438,25 @@ async def resolve_tradable_symbol(connection, symbol: str) -> str:
     except Exception:
         pass
 
-    for suffix in [".ifx", "m", ".c", "pro", "+", ".r"]:
-        cand = f"{symbol}{suffix}"
+    clean_base = symbol.split(".")[0].rstrip("m").rstrip("_")
+    candidates = [
+        f"{symbol}_m",
+        f"{symbol}.ifx",
+        f"{symbol}.ifx_m",
+        f"{clean_base}.ifx_m",
+        f"{clean_base}.ifx",
+        f"{clean_base}m",
+        f"{clean_base}_m",
+        f"{clean_base}.c",
+        f"{clean_base}pro",
+        f"{clean_base}+",
+        f"{clean_base}.r",
+    ]
+    seen = {symbol}
+    for cand in candidates:
+        if cand in seen:
+            continue
+        seen.add(cand)
         try:
             cand_spec = await connection.get_symbol_specification(cand)
             if cand_spec and cand_spec.get("tradeMode") in {
@@ -1077,8 +1094,8 @@ def main():
     parser = argparse.ArgumentParser(description="MetaApi Cloud Autonomous Trading Robot")
     parser.add_argument(
         "--symbols",
-        default="EURUSD,GBPUSD,USDJPY,USDZAR",
-        help="Comma-separated symbols to monitor (default: EURUSD,GBPUSD,USDJPY,USDZAR)",
+        default="EURUSD,GBPUSD,USDJPY,USDZAR,T100",
+        help="Comma-separated symbols to monitor (default: EURUSD,GBPUSD,USDJPY,USDZAR,T100)",
     )
     parser.add_argument("--symbol", help="Single symbol shorthand (overrides --symbols if specified)")
     parser.add_argument(
