@@ -9,7 +9,14 @@ import tempfile
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from streamlit.testing.v1 import AppTest
+
+try:
+    from streamlit.testing.v1 import AppTest
+
+    HAS_STREAMLIT = True
+except ImportError:
+    AppTest = None  # type: ignore[assignment,misc]
+    HAS_STREAMLIT = False
 
 from trading_state import (
     is_execution_authorized,
@@ -130,6 +137,7 @@ def test_environment_variable_force_override(temp_workspace):
         assert load_execution_state(base_dir=root) is False
 
 
+@pytest.mark.skipif(not HAS_STREAMLIT or AppTest is None, reason="streamlit is not installed")
 def test_streamlit_dashboard_session_state_and_button_toggle(temp_workspace):
     """Test Streamlit dashboard session_state initialization, badge rendering, and click toggle."""
     app_path = os.path.join(
