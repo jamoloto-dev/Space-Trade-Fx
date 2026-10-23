@@ -782,7 +782,10 @@ async def run_trading_robot(
         "Valid JWT" if diag["is_jwt"] else "String",
         diag["masked"],
     )
-    api = MetaApi(token=token)
+    metaapi_region = os.environ.get("METAAPI_REGION", "london").strip().lower()
+    api_opts = {"region": metaapi_region, "domain": "agiliumtrade.ai"} if metaapi_region else {"domain": "agiliumtrade.ai"}
+    logger.info("Configured MetaApi client options: region=%s, domain=%s", api_opts.get("region"), api_opts.get("domain"))
+    api = MetaApi(token=token, opts=api_opts)
 
     connection = None
     target_symbols = symbols if symbols else [symbol]
