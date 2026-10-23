@@ -783,8 +783,8 @@ async def run_trading_robot(
         diag["masked"],
     )
     metaapi_region = os.environ.get("METAAPI_REGION", "london").strip().lower()
-    api_opts = {"region": metaapi_region, "domain": "agiliumtrade.ai"} if metaapi_region else {"domain": "agiliumtrade.ai"}
-    logger.info("Configured MetaApi client options: region=%s, domain=%s", api_opts.get("region"), api_opts.get("domain"))
+    api_opts = {"region": metaapi_region} if metaapi_region else None
+    logger.info("Configured MetaApi client options: %s", api_opts)
     api = MetaApi(token=token, opts=api_opts)
 
     connection = None
