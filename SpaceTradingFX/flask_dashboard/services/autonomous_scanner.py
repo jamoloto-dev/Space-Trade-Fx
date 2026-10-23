@@ -165,6 +165,13 @@ def run_autonomous_cycle(app: Flask, force_scan: bool = False) -> dict[str, Any]
                             or strategy.get("automated_broker_trading")
                         )
                     )
+                    try:
+                        from trading_state import is_execution_authorized
+
+                        if not is_execution_authorized():
+                            auto_pilot_enabled = False
+                    except ImportError:
+                        pass
 
                     if in_rollover and (prefs and prefs.trading_enabled):
                         logger.info(

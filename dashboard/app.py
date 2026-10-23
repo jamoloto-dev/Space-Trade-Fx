@@ -5,14 +5,24 @@ Comprehensive modern dashboard UI mirroring professional quant terminals:
 - Probabilistic Signal Stack & Market Performance curves
 - Risk & Auto-Pilot Matrix with Emergency Stop
 - Real-Time Active Broker Positions Matrix
+- Persistent Trading Execution Controls & Visual Status Badges
 """
+
+from __future__ import annotations
 
 import os
 import sqlite3
+import sys
 
 import numpy as np
 import pandas as pd
 import streamlit as st
+
+base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if base_dir not in sys.path:
+    sys.path.insert(0, base_dir)
+
+from trading_state import load_execution_state, save_execution_state  # noqa: E402
 
 st.set_page_config(
     page_title="QuantBot Terminal",
@@ -24,7 +34,6 @@ st.set_page_config(
 
 def load_db_telemetry() -> tuple[dict, list]:
     """Load latest live telemetry and open positions from SQLite database."""
-    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     db_path = os.path.join(base_dir, "trading.db")
 
     telemetry = {
@@ -114,6 +123,21 @@ def load_db_telemetry() -> tuple[dict, list]:
     return telemetry, positions
 
 
+# ---------------------------------------------------------
+# State Persistence via st.session_state & Trigger Manager
+# ---------------------------------------------------------
+if "trading_active" not in st.session_state:
+    st.session_state["trading_active"] = load_execution_state(base_dir)
+
+
+def on_toggle_trading_clicked():
+    """Toggle robot trading state, persist to st.session_state, trigger file, and database."""
+    current_state = st.session_state.get("trading_active", False)
+    new_state = not current_state
+    st.session_state["trading_active"] = new_state
+    save_execution_state(new_state, base_dir=base_dir, source="streamlit_dashboard")
+
+
 telemetry, positions = load_db_telemetry()
 sym = telemetry["currency_symbol"]
 
@@ -151,18 +175,65 @@ with left_col:
 
 with right_col:
     st.subheader("🛡️ Risk & Auto-Pilot Matrix")
-    st.info("🤖 **Auto-Pilot Status**: ACTIVE (65% Confidence Threshold)")
+    is_trading_active = st.session_state.get("trading_active", False)
+    if is_trading_active:
+        st.info("🤖 **Auto-Pilot Status**: ACTIVE (≥80% Confidence Threshold)")
+    else:
+        st.warning("🤖 **Auto-Pilot Status**: INACTIVE / PAUSED (Execution Hold)")
+
     st.success("🔒 **Exposure Guardrail**: 2 / 3 Max Trades Open")
     st.warning("⚠️ **Daily Drawdown Limit**: 5.0% (Circuit Breaker Protected)")
 
-    st.markdown("### Emergency Controls")
-    if st.button("🚨 Emergency Stop / Pause Bot", use_container_width=True):
-        st.error("Auto-Pilot Execution Paused Manually. Orders Protected.")
+    st.markdown("### Execution & Emergency Controls")
+
+    # Visual Indicator (Active / Inactive Status Badge) right above the button
+    if is_trading_active:
+        st.markdown(
+            """
+            <div style="background-color: rgba(34, 197, 94, 0.15); border: 1px solid #22c55e; border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="display: inline-block; width: 10px; height: 10px; border-radius: 50%; background-color: #22c55e; box-shadow: 0 0 8px #22c55e;"></span>
+                    <strong style="color: #22c55e; font-size: 14px;">ROBOT STATUS: ACTIVE</strong>
+                </div>
+                <span style="color: #86efac; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Authorized to Trade</span>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        st.button(
+            "⏹️ STOP TRADING / PAUSE BOT",
+            key="btn_toggle_trading",
+            on_click=on_toggle_trading_clicked,
+            type="secondary",
+            use_container_width=True,
+            help="Click to halt auto-pilot execution and put robot on standby.",
+        )
+        st.caption("Robot is authorized to execute trades. Click to pause.")
     else:
-        st.caption("Click to trigger immediate order hold and disconnect new signal dispatch.")
+        st.markdown(
+            """
+            <div style="background-color: rgba(239, 68, 68, 0.15); border: 1px solid #ef4444; border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="display: inline-block; width: 10px; height: 10px; border-radius: 50%; background-color: #ef4444; box-shadow: 0 0 8px #ef4444;"></span>
+                    <strong style="color: #ef4444; font-size: 14px;">ROBOT STATUS: INACTIVE</strong>
+                </div>
+                <span style="color: #fca5a5; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Execution Paused</span>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        st.button(
+            "▶️ START TRADING",
+            key="btn_toggle_trading",
+            on_click=on_toggle_trading_clicked,
+            type="primary",
+            use_container_width=True,
+            help="Click to authorize robot and start auto-pilot execution.",
+        )
+        st.caption("Robot execution is currently paused. Click 'START TRADING' to resume.")
 
     st.markdown("### Confidence Calibration")
-    st.progress(68, text="Current Composite Confidence: 68.4% (Threshold: 65%)")
+    st.progress(82, text="Current Composite Confidence: 82.0% (Threshold: 80%)")
 
 st.divider()
 

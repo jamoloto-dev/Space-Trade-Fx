@@ -45,6 +45,13 @@ try:
 except ImportError:
     TrailingStopManager = None  # type: ignore[assignment,misc]
 
+try:
+    from trading_state import is_execution_authorized
+except ImportError:
+
+    def is_execution_authorized(base_dir: str | None = None, db_path: str | None = None) -> bool:
+        return True
+
 
 def setup_logging(log_file: str = "metaapi_robot.log") -> logging.Logger:
     """Configure comprehensive console and rotating file logging."""
@@ -864,7 +871,23 @@ async def run_trading_robot(
                 await asyncio.sleep(interval_seconds)
                 continue
 
-            # 5.3. Trade Cooldown Waiting Period (Prevent Over-Trading)
+            # 5.3. Execution Authorization Check (Dashboard Toggle & Trigger Flag)
+            robot_base_dir = os.path.dirname(os.path.abspath(__file__))
+            resolved_db_path = os.environ.get("TRADING_DB_PATH") or os.path.join(robot_base_dir, "trading.db")
+            authorized = is_execution_authorized(
+                base_dir=robot_base_dir,
+                db_path=resolved_db_path,
+            )
+            if not authorized:
+                logger.info(
+                    "⏸️ [EXECUTION PAUSED] Robot is NOT authorized to trade (dashboard toggle is PAUSED / trigger inactive). Standing by..."
+                )
+                if not loop or (max_cycles and cycle_count >= max_cycles):
+                    break
+                await asyncio.sleep(interval_seconds)
+                continue
+
+            # 5.4. Trade Cooldown Waiting Period (Prevent Over-Trading)
             now_ts = time.time()
             elapsed_since_trade = now_ts - last_trade_time
             if last_trade_time > 0 and elapsed_since_trade < cooldown_seconds:
@@ -879,7 +902,7 @@ async def run_trading_robot(
                 await asyncio.sleep(interval_seconds)
                 continue
 
-            # 5.4. Evaluate AI Signals & Strategy across monitored symbols
+            # 5.5. Evaluate AI Signals & Strategy across monitored symbols
             order_executed_this_cycle = False
             for sym in target_symbols:
                 # Restrict volatile indices (e.g. T100, USTEC, NAS100)
