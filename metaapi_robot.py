@@ -1035,29 +1035,36 @@ async def run_trading_robot(
                         calc_sl,
                         calc_tp,
                     )
-                    trade_res = await execute_market_order(
-                        connection=connection,
-                        symbol=actual_sym,
-                        volume=sized_volume,
-                        action=target_action,
-                        stop_loss=calc_sl,
-                        take_profit=calc_tp,
-                    )
-                    if signal_engine and trade_res:
-                        ticket_id = str(trade_res.get("orderId") or trade_res.get("numericCode") or "")
-                        signal_engine.log_trade_outcome(
+                    try:
+                        trade_res = await execute_market_order(
+                            connection=connection,
                             symbol=actual_sym,
-                            actual_profit=0.0,
-                            confidence=final_confidence,
-                            ticket=ticket_id,
+                            volume=sized_volume,
+                            action=target_action,
+                            stop_loss=calc_sl,
+                            take_profit=calc_tp,
                         )
-                    last_trade_time = time.time()
-                    order_executed_this_cycle = True
-                    logger.info(
-                        "Order confirmed in MetaTrader terminal. Initializing %s-second trade cooldown.",
-                        cooldown_seconds,
-                    )
-                    break
+                        if signal_engine and trade_res:
+                            ticket_id = str(trade_res.get("orderId") or trade_res.get("numericCode") or "")
+                            signal_engine.log_trade_outcome(
+                                symbol=actual_sym,
+                                actual_profit=0.0,
+                                confidence=final_confidence,
+                                ticket=ticket_id,
+                            )
+                        last_trade_time = time.time()
+                        order_executed_this_cycle = True
+                        logger.info(
+                            "Order confirmed in MetaTrader terminal. Initializing %s-second trade cooldown.",
+                            cooldown_seconds,
+                        )
+                        break
+                    except Exception as exec_err:
+                        logger.error(
+                            "Transient order execution failure for %s: %s. Continuing monitoring.",
+                            actual_sym,
+                            exec_err,
+                        )
                 else:
                     logger.info("Execution flag not set. Skipping live order dispatch.")
 

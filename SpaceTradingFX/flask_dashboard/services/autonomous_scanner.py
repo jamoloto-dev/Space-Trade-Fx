@@ -69,16 +69,29 @@ def run_autonomous_cycle(app: Flask, force_scan: bool = False) -> dict[str, Any]
                     if tripped_date and tripped_date != today_str:
                         strategy["circuit_breaker_tripped"] = False
                         strategy["circuit_breaker_date"] = None
+                        strategy["circuit_breaker_reset_at"] = None
                         if prefs:
                             prefs.strategy_settings = strategy
                             db.session.commit()
 
                     # 3. Daily Loss Circuit Breaker calculation
-                    # Sum realized P/L of trades closed today
+                    # Sum realized P/L of trades closed today (or since last circuit breaker reset)
+                    calc_start = today_start
+                    reset_at_iso = strategy.get("circuit_breaker_reset_at")
+                    if reset_at_iso:
+                        try:
+                            reset_dt = datetime.fromisoformat(reset_at_iso)
+                            if reset_dt.tzinfo is None:
+                                reset_dt = reset_dt.replace(tzinfo=timezone.utc)
+                            if reset_dt > today_start:
+                                calc_start = reset_dt
+                        except Exception:
+                            pass
+
                     closed_today = Trade.query.filter(
                         Trade.user_id == user_id,
                         Trade.status == "closed",
-                        Trade.closed_at >= today_start,
+                        Trade.closed_at >= calc_start,
                     ).all()
                     today_realized_pnl = sum(
                         (t.profit_loss for t in closed_today if t.profit_loss is not None), Decimal("0.00")

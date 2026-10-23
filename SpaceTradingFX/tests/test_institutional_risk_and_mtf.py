@@ -164,6 +164,25 @@ def test_daily_loss_circuit_breaker(app, risk_user):
         assert strat.get("circuit_breaker_tripped") is True
         assert prefs.trading_enabled is False
 
+        # Reset circuit breaker
+        from datetime import datetime, timezone
+        strat = dict(prefs.strategy_settings or {})
+        strat["circuit_breaker_tripped"] = False
+        strat["circuit_breaker_date"] = None
+        strat["circuit_breaker_pnl"] = "0.00"
+        strat["circuit_breaker_reset_at"] = datetime.now(timezone.utc).isoformat()
+        prefs.strategy_settings = strat
+        prefs.trading_enabled = True
+        db.session.commit()
+
+        # Run autonomous cycle again: should NOT re-trip because calc_start filters out prior closed trades
+        report2 = run_autonomous_cycle(app, force_scan=True)
+        assert report2["users_processed"] >= 1
+        prefs2 = TradingPreference.query.filter_by(user_id="test-risk-user").first()
+        strat2 = prefs2.strategy_settings or {}
+        assert strat2.get("circuit_breaker_tripped") is False
+        assert prefs2.trading_enabled is True
+
 
 def test_multi_timeframe_confluence_and_rollover(app):
     with app.app_context():

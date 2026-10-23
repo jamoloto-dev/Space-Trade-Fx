@@ -3,6 +3,7 @@ Trading Blueprint
 Handles trading operations, preferences, and API endpoints
 """
 
+from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 
 from flask import Blueprint, current_app, flash, jsonify, redirect, render_template, request, url_for
@@ -678,6 +679,7 @@ def api_trading_toggle_auto_pilot():
         strategy["circuit_breaker_tripped"] = False
         strategy["circuit_breaker_date"] = None
         strategy["circuit_breaker_pnl"] = "0.00"
+        strategy["circuit_breaker_reset_at"] = datetime.now(timezone.utc).isoformat()
     prefs.strategy_settings = strategy
 
     db.session.commit()
@@ -687,6 +689,37 @@ def api_trading_toggle_auto_pilot():
         else "Auto-Pilot Mode paused (Manual execution only)"
     )
     return jsonify({"success": True, "enabled": new_state, "message": msg}), 200
+
+
+@trading_bp.route("/api/trading/reset-circuit-breaker", methods=["POST"])
+@login_required
+def api_trading_reset_circuit_breaker():
+    """Reset daily loss circuit breaker and resume auto-pilot trading."""
+    from datetime import datetime, timezone
+    from ..extensions import db
+    from ..models import TradingPreference
+
+    prefs = TradingPreference.query.filter_by(user_id=current_user.id).first()
+    if not prefs:
+        prefs = TradingPreference(user_id=current_user.id)
+        db.session.add(prefs)
+
+    prefs.trading_enabled = True
+    strategy = dict(prefs.strategy_settings or {})
+    strategy["auto_pilot"] = True
+    strategy["automated_broker_trading"] = True
+    strategy["circuit_breaker_tripped"] = False
+    strategy["circuit_breaker_date"] = None
+    strategy["circuit_breaker_pnl"] = "0.00"
+    strategy["circuit_breaker_reset_at"] = datetime.now(timezone.utc).isoformat()
+    prefs.strategy_settings = strategy
+
+    db.session.commit()
+    return jsonify({
+        "success": True,
+        "message": "Daily drawdown circuit breaker reset successfully. Auto-Pilot resumed.",
+        "enabled": True,
+    }), 200
 
 
 @trading_bp.route("/api/quotes/update-config", methods=["POST"])
