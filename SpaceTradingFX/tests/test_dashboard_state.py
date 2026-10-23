@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import sqlite3
@@ -197,8 +198,7 @@ def test_streamlit_dashboard_session_state_and_button_toggle(temp_workspace):
         assert at.session_state["trading_active"] is True
 
 
-@pytest.mark.anyio
-async def test_metaapi_robot_pauses_when_trading_inactive(temp_workspace):
+def test_metaapi_robot_pauses_when_trading_inactive(temp_workspace):
     """Verify metaapi_robot respects the execution flag and pauses execution when inactive."""
     import metaapi_robot
 
@@ -236,18 +236,19 @@ async def test_metaapi_robot_pauses_when_trading_inactive(temp_workspace):
         patch("metaapi_robot.MetaApi", return_value=mock_api),
         patch("metaapi_robot.evaluate_market_signal") as mock_signal,
     ):
-        await metaapi_robot.run_trading_robot(
-            symbols=["EURUSD.ifx"],
-            loop=False,
-            max_cycles=1,
-            monitor_positions=False,
+        asyncio.run(
+            metaapi_robot.run_trading_robot(
+                symbols=["EURUSD.ifx"],
+                loop=False,
+                max_cycles=1,
+                monitor_positions=False,
+            )
         )
         # Because execution was paused, evaluate_market_signal was never called!
         assert mock_signal.call_count == 0
 
 
-@pytest.mark.anyio
-async def test_metaapi_robot_proceeds_when_trading_active(temp_workspace):
+def test_metaapi_robot_proceeds_when_trading_active(temp_workspace):
     """Verify metaapi_robot proceeds to evaluate signals when trading is authorized/active."""
     import metaapi_robot
 
@@ -290,11 +291,13 @@ async def test_metaapi_robot_proceeds_when_trading_active(temp_workspace):
             return_value={"signal": "HOLD", "confidence": 0.50},
         ) as mock_signal,
     ):
-        await metaapi_robot.run_trading_robot(
-            symbols=["EURUSD.ifx"],
-            loop=False,
-            max_cycles=1,
-            monitor_positions=False,
+        asyncio.run(
+            metaapi_robot.run_trading_robot(
+                symbols=["EURUSD.ifx"],
+                loop=False,
+                max_cycles=1,
+                monitor_positions=False,
+            )
         )
         # Because execution was authorized, evaluate_market_signal was executed!
         assert mock_signal.call_count == 1
