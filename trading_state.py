@@ -180,7 +180,7 @@ def save_execution_state(
                 if pref_row:
                     pref_id = pref_row[0]
                     raw_settings = pref_row[1]
-                    settings_dict = {}
+                    settings_dict: dict[str, Any] = {}
                     if raw_settings:
                         try:
                             settings_dict = (
