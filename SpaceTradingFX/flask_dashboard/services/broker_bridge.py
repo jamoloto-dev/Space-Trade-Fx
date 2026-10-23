@@ -574,7 +574,8 @@ def sync_broker_positions(user_id: str, positions: list[dict[str, Any]] | None =
         # Reconcile open trades in DB whose tickets are no longer active on broker
         open_trades = Trade.query.filter_by(user_id=user_id, status="open").all()
         for t in open_trades:
-            if t.broker_order_id and t.broker_order_id not in seen_tickets:
+            ticket_id = t.broker_order_id or t.mt5_ticket
+            if ticket_id and ticket_id not in seen_tickets:
                 t.status = "closed"
                 t.closed_at = utcnow()
                 t.updated_at = utcnow()

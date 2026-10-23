@@ -170,8 +170,18 @@ class TradingEngine:
                 signals.append(enriched_signal)
 
                 strength_val = float(signal_data.get("strength", 70))
-                # Log alert feed notification for high confidence signals (>= 70%)
-                if strength_val >= 70.0:
+                strat_settings = self.preferences.strategy_settings or {}
+                min_conf = float(
+                    strat_settings.get(
+                        "min_confidence",
+                        70.0
+                        if strat_settings.get("automated_paper_trading") and "min_confidence" not in strat_settings
+                        else 80.0,
+                    )
+                )
+
+                # Log alert feed notification for high confidence signals (>= min_conf)
+                if strength_val >= min_conf:
                     try:
                         from .notifications import create_notification
 
@@ -184,6 +194,27 @@ class TradingEngine:
                         )
                     except Exception:
                         pass
+
+                # Strict Trend Filter (200 EMA): Never fight the trend!
+                ema200 = indicators.get("ema200")
+                trend_aligned = True
+                if ema200 is not None:
+                    if direction == "BUY" and entry_float < ema200:
+                        trend_aligned = False
+                        logger.info(
+                            "Strict 200 EMA trend filter: BUY signal for %s blocked (price %.5f < EMA200 %.5f)",
+                            symbol,
+                            entry_float,
+                            ema200,
+                        )
+                    elif direction == "SELL" and entry_float > ema200:
+                        trend_aligned = False
+                        logger.info(
+                            "Strict 200 EMA trend filter: SELL signal for %s blocked (price %.5f > EMA200 %.5f)",
+                            symbol,
+                            entry_float,
+                            ema200,
+                        )
 
                 # Institutional duplicate-position protection: never open a second trade on a symbol with an active open position
                 existing_open = Trade.query.filter_by(user_id=self.user_id, currency_pair=symbol, status="open").first()
@@ -231,8 +262,9 @@ class TradingEngine:
                     submit_automatically
                     and not in_rollover
                     and not veto_active
+                    and trend_aligned
                     and (allowed in {"BOTH", direction})
-                    and (strength_val >= 70.0)
+                    and (strength_val >= min_conf)
                     and (existing_open is None)
                 ):
                     key = f"auto:{symbol}:{self.preferences.timeframe}:{quote_time}:{direction}"
@@ -558,7 +590,12 @@ class TradingEngine:
     def _profit_loss(self, trade: Trade, price: Decimal) -> Decimal:
         difference = price - trade.entry_price if trade.trade_type == "BUY" else trade.entry_price - price
         contract_size = instrument(trade.currency_pair).contract_size
-        return (difference * trade.lot_size * contract_size).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        pnl = difference * trade.lot_size * contract_size
+        # Convert P/L to USD if quote currency is JPY, ZAR, CAD, or CHF
+        sym = trade.currency_pair.upper()
+        if (sym.endswith("JPY") or sym.endswith("ZAR") or sym.endswith("CAD") or sym.endswith("CHF")) and price > 0:
+            pnl = pnl / price
+        return pnl.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
     def _check_exit_conditions(self, trade: Trade, current_price: Decimal) -> bool:
         if trade.trade_type == "BUY":

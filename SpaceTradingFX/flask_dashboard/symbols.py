@@ -35,7 +35,7 @@ PAPER_INSTRUMENTS: dict[str, PaperInstrument] = {
 }
 
 SUPPORTED_SYMBOLS = frozenset(CORE_TRADING_PAIRS)
-DEFAULT_MONITORED_PAIRS = list(CORE_TRADING_PAIRS)
+DEFAULT_MONITORED_PAIRS = ["EURUSD", "GBPUSD", "USDJPY"]
 # Alpha Vantage & broker intraday endpoints support these source intervals.
 SUPPORTED_TIMEFRAMES = frozenset({"1M", "5M", "15M", "1H"})
 DEFAULT_LOT_SIZE = Decimal("0.01")

@@ -554,7 +554,7 @@ def api_market_candles(symbol: str):
 @mobile_bp.route("/api/trading/toggle-auto-pilot", methods=["POST"])
 @login_required
 def api_trading_toggle_auto_pilot():
-    """Toggle Auto-Pilot Mode (Auto-execute signals >= 65% confidence)."""
+    """Toggle Auto-Pilot Mode (Auto-execute signals >= 80% confidence)."""
     from .trading import api_trading_toggle_auto_pilot as toggle_ap
 
     return toggle_ap()

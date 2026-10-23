@@ -17,7 +17,7 @@ logger = logging.getLogger("SignalEngine")
 class SignalEngine:
     """Predictive scoring engine weighting multi-factor trading signals."""
 
-    def __init__(self, confidence_threshold: float = 0.65):
+    def __init__(self, confidence_threshold: float = 0.80):
         self.confidence_threshold = confidence_threshold
         self.prediction_history: list[dict[str, Any]] = []
 

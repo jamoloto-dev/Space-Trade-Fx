@@ -743,7 +743,7 @@ async def run_trading_robot(
     max_drawdown_pct: float = 5.0,
     sl_pips: float = 25.0,
     tp_pips: float = 50.0,
-    min_confidence: float = 65.0,
+    min_confidence: float = 80.0,
     loop: bool = False,
     interval_seconds: float = 30.0,
     cooldown_seconds: float = 60.0,
@@ -882,6 +882,13 @@ async def run_trading_robot(
             # 5.4. Evaluate AI Signals & Strategy across monitored symbols
             order_executed_this_cycle = False
             for sym in target_symbols:
+                # Restrict volatile indices (e.g. T100, USTEC, NAS100)
+                if any(idx in sym.upper() for idx in ("T100", "USTEC", "NAS100", "US30", "GER30")):
+                    logger.warning(
+                        "Symbol %s restricted: Volatile index trading disabled to protect capital. Skipping.", sym
+                    )
+                    continue
+
                 actual_sym = await resolve_tradable_symbol(connection, sym)
 
                 # Guardrail check: max open trades and duplicate symbol position
@@ -911,9 +918,31 @@ async def run_trading_robot(
                     )
                     continue
 
+                # Strict Trend Filter (200 EMA): Never fight the trend!
+                indicators = signal_data.get("indicators", {})
+                ema200 = indicators.get("ema200")
+                market_price = float(signal_data.get("price") or signal_data.get("entry_price") or 0.0)
+                if ema200 and market_price > 0:
+                    if target_action == "BUY" and market_price < ema200:
+                        logger.warning(
+                            "🚨 Strict Trend Filter Block: Refusing BUY for %s because price (%.5f) is below 200 EMA (%.5f) (Bearish Regime). Never fighting the trend.",
+                            sym,
+                            market_price,
+                            ema200,
+                        )
+                        continue
+                    elif target_action == "SELL" and market_price > ema200:
+                        logger.warning(
+                            "🚨 Strict Trend Filter Block: Refusing SELL for %s because price (%.5f) is above 200 EMA (%.5f) (Bullish Regime). Never fighting the trend.",
+                            sym,
+                            market_price,
+                            ema200,
+                        )
+                        continue
+
                 if confidence < min_confidence and not action:
                     logger.info(
-                        "Signal %s for %s confidence %.1f%% < minimum %.1f%%. Skipping.",
+                        "Signal %s for %s confidence %.1f%% < minimum %.1f%% (80%%+ high-probability threshold). Skipping.",
                         target_action,
                         sym,
                         confidence,
@@ -1101,8 +1130,8 @@ def main():
     parser = argparse.ArgumentParser(description="MetaApi Cloud Autonomous Trading Robot")
     parser.add_argument(
         "--symbols",
-        default="EURUSD,GBPUSD,USDJPY,USDZAR,T100",
-        help="Comma-separated symbols to monitor (default: EURUSD,GBPUSD,USDJPY,USDZAR,T100)",
+        default="EURUSD.ifx,GBPUSD.ifx,USDJPY.ifx",
+        help="Comma-separated symbols to monitor (default: EURUSD.ifx,GBPUSD.ifx,USDJPY.ifx)",
     )
     parser.add_argument("--symbol", help="Single symbol shorthand (overrides --symbols if specified)")
     parser.add_argument(
@@ -1161,8 +1190,8 @@ def main():
     parser.add_argument(
         "--min-confidence",
         type=float,
-        default=65.0,
-        help="Minimum signal confidence threshold to trigger a trade (default: 65.0%%)",
+        default=80.0,
+        help="Minimum signal confidence threshold to trigger a trade (default: 80.0%%)",
     )
     parser.add_argument(
         "--sl-pips",

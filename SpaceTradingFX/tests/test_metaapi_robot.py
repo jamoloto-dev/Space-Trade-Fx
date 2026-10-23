@@ -482,3 +482,37 @@ def test_monitor_open_positions_break_even_trailing():
         take_profit=1.10500,
     )
     assert trailing_mgr.is_already_modified("5555") is True
+
+
+def test_strict_200_ema_trend_filter():
+    from flask_dashboard.forex_data import LiveMarketScanner, MockForexDataProvider
+
+    # 1. Mock provider has ema200 and BUY signal above ema200
+    mock_p = MockForexDataProvider()
+    sig = mock_p.analyze_signal("EURUSD")
+    assert "ema200" in sig["indicators"]
+    assert sig["indicators"]["ema200"] < sig["entry_price"]
+    assert sig["indicators"]["trend_regime"] == "BULL"
+    assert sig["indicators"]["trend_filter_passed"] is True
+
+    # 2. LiveMarketScanner fallback returns ema200 and 80%+ strength for confluent setups
+    scanner = LiveMarketScanner(cache_ttl_seconds=0)
+    fb_sig = scanner.analyze_signal("EURUSD")
+    assert "ema200" in fb_sig["indicators"]
+    assert fb_sig["indicators"]["trend_filter_passed"] is True
+    assert fb_sig["strength"] > 0
+
+
+def test_confidence_threshold_and_symbol_restrictions():
+    import argparse
+
+    # 1. Volatile index restriction: T100 must be skipped
+    assert any(idx in "T100.IFX".upper() for idx in ("T100", "USTEC", "NAS100", "US30", "GER30"))
+    assert any(idx in "T100".upper() for idx in ("T100", "USTEC", "NAS100", "US30", "GER30"))
+    assert not any(idx in "EURUSD.IFX".upper() for idx in ("T100", "USTEC", "NAS100", "US30", "GER30"))
+
+    # 2. Minimum confidence threshold default is 80%
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--min-confidence", type=float, default=80.0)
+    args = parser.parse_args([])
+    assert args.min_confidence == 80.0

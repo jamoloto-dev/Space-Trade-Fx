@@ -11,7 +11,7 @@ services:
     region: frankfurt
     plan: starter # Render background workers require a paid plan (starter or higher)
     buildCommand: pip install --upgrade pip && pip install -r requirements.txt
-    startCommand: python metaapi_robot.py --loop --interval 30 --cooldown 60 --no-auto-be --symbols EURUSD.ifx,USDZAR.ifx,T100.ifx
+    startCommand: python metaapi_robot.py --loop --interval 30 --cooldown 60 --no-auto-be --min-confidence 80.0 --symbols EURUSD.ifx,GBPUSD.ifx,USDJPY.ifx
     envVars:
       - key: PYTHON_VERSION
         value: 3.12.3

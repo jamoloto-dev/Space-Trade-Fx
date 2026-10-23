@@ -454,6 +454,9 @@ class MockForexDataProvider:
                 "ema9": round(entry * 1.0008, 5),
                 "ema21": round(entry * 1.0003, 5),
                 "ema50": round(entry * 0.9995, 5),
+                "ema200": round(entry * 0.9980, 5),
+                "trend_regime": "BULL",
+                "trend_filter_passed": True,
                 "macd": {"macd": 0.0012, "signal": 0.0008, "hist": 0.0004},
                 "atr": atr,
                 "atr5": atr if is_scalping else round(entry * 0.0012, 5),
@@ -466,7 +469,7 @@ class MockForexDataProvider:
                 "trading_mode": "scalping" if is_scalping else "swing",
             },
             "signal": "BUY",
-            "strength": 75,
+            "strength": 82,
             "entry_price": entry,
             "stop_loss": sl,
             "take_profit": tp,
@@ -533,7 +536,7 @@ class LiveMarketScanner:
 
             ticker = yf.Ticker(ticker_symbol)
             yf_interval = "5m" if is_scalping else "1h"
-            period = "2d" if is_scalping else "5d"
+            period = "5d" if is_scalping else "1mo"
             df = ticker.history(period=period, interval=yf_interval)
             min_candles = 8 if is_scalping else 14
             if df is None or df.empty or len(df) < min_candles:
@@ -544,6 +547,11 @@ class LiveMarketScanner:
             low = df["Low"]
 
             # Scalping (M1/M5) vs Swing (1H/4H) indicators
+            ema200 = (
+                float(close.ewm(span=200, adjust=False).mean().iloc[-1])
+                if len(close) >= 200
+                else float(close.ewm(span=len(close), adjust=False).mean().iloc[-1])
+            )
             if is_scalping:
                 ema5 = float(close.ewm(span=5, adjust=False).mean().iloc[-1])
                 ema13 = float(close.ewm(span=13, adjust=False).mean().iloc[-1])
@@ -668,22 +676,37 @@ class LiveMarketScanner:
             else:
                 sell_score += 15
 
-            # 3-Timeframe Confluence determines signal strength:
-            # Reaches >= 70% confidence ONLY when H4, H1, and M15 align in the same direction!
-            if all_bull:
+            # Strict 200 EMA Trend Filter:
+            # Bullish Regime: latest_close >= ema200 -> BUY signals only
+            # Bearish Regime: latest_close < ema200  -> SELL signals only
+            trend_regime = "BULL" if latest_close >= ema200 else "BEAR"
+
+            # 3-Timeframe Confluence + Strict 200 EMA Trend Filter:
+            # Reaches >= 80% confidence ONLY when H4, H1, and M15 align in the same direction AND price is aligned with 200 EMA!
+            # Never fights the trend:
+            if all_bull and latest_close >= ema200:
                 direction = "BUY"
-                strength = 75
-            elif all_bear:
+                strength = 82
+            elif all_bear and latest_close <= ema200:
                 direction = "SELL"
-                strength = 75
+                strength = 82
+            elif latest_close >= ema200:
+                # Bullish regime: ONLY BUY signals permitted, SELL strictly blocked
+                direction = "BUY"
+                strength = min(60, max(buy_score, 40)) if buy_score > sell_score else 0
+            elif latest_close < ema200:
+                # Bearish regime: ONLY SELL signals permitted, BUY strictly blocked
+                direction = "SELL"
+                strength = min(60, max(sell_score, 40)) if sell_score > buy_score else 0
             else:
-                direction = "BUY" if buy_score >= sell_score else "SELL"
-                # Divergent / non-confluent signals stay capped under the 70% execution threshold
-                strength = min(58, max(buy_score, sell_score))
+                direction = "HOLD"
+                strength = 0
 
             # Session liquidity boost (09:00 - 22:00 SAST for London/NY overlap)
+            # Only boost if confluent and strictly following the 200 EMA trend!
             if is_high_liquidity_session(now) and is_confluent:
-                strength = min(92, strength + 10)
+                if (direction == "BUY" and latest_close >= ema200) or (direction == "SELL" and latest_close <= ema200):
+                    strength = min(95, strength + 10)
 
             # Enforce pair DIRECTION preference from /m/quotes
             dir_pref = str(direction_preference or "BOTH").strip().upper()
@@ -696,12 +719,13 @@ class LiveMarketScanner:
                 else (3 if "JPY" in symbol_clean else (4 if "ZAR" in symbol_clean else 5))
             )
             # Tight Scalping vs Swing SL/TP scaling
+            atr_rounded = round(atr_val, decimals)
             if is_scalping:
-                sl_dist = 1.0 * atr_val
-                tp_dist = 1.5 * atr_val
+                sl_dist = 1.0 * atr_rounded
+                tp_dist = 1.5 * atr_rounded
             else:
-                sl_dist = 1.5 * atr_val
-                tp_dist = 2.5 * atr_val
+                sl_dist = 1.5 * atr_rounded
+                tp_dist = 2.5 * atr_rounded
 
             if direction == "BUY":
                 sl = round(latest_close - sl_dist, decimals)
@@ -723,6 +747,10 @@ class LiveMarketScanner:
             else:
                 adjusted_strength = min(strength, 40)
 
+            trend_filter_passed = (direction == "BUY" and latest_close >= ema200) or (
+                direction == "SELL" and latest_close <= ema200
+            )
+
             res = {
                 "currency_pair": symbol_clean,
                 "signal": direction,
@@ -739,6 +767,9 @@ class LiveMarketScanner:
                     "ema9": round(ema9, decimals),
                     "ema21": round(ema21, decimals),
                     "ema50": round(ema50, decimals),
+                    "ema200": round(ema200, decimals),
+                    "trend_regime": trend_regime,
+                    "trend_filter_passed": trend_filter_passed,
                     "macd": latest_macd,
                     "atr": round(atr_val, decimals),
                     "atr5": round(atr_val, decimals) if is_scalping else None,
@@ -829,7 +860,13 @@ class LiveMarketScanner:
             macro_eval["veto_active"] = veto_active
             macro_eval["veto_reason"] = veto_reason
 
-            fallback_strength = 75 if dir_pref in {"BOTH", fallback_dir} else 0
+            fallback_ema200 = (
+                round(fallback_price * 0.9980, decimals)
+                if fallback_dir == "BUY"
+                else round(fallback_price * 1.0020, decimals)
+            )
+
+            fallback_strength = 82 if dir_pref in {"BOTH", fallback_dir} else 0
             if not veto_active:
                 fallback_strength = max(30, min(95, fallback_strength + macro_eval.get("confidence_modifier", 0)))
             else:
@@ -852,6 +889,9 @@ class LiveMarketScanner:
                     "ema9": round(fallback_price * 1.0005, decimals),
                     "ema21": round(fallback_price * 1.0002, decimals),
                     "ema50": round(fallback_price * 0.9990, decimals),
+                    "ema200": fallback_ema200,
+                    "trend_regime": fallback_trend,
+                    "trend_filter_passed": True,
                     "macd": {"macd": 0.0005, "signal": 0.0003, "hist": 0.0002},
                     "atr": atr_val,
                     "entry": fallback_price,
