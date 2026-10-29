@@ -38,9 +38,11 @@ htmlcov/
 .tox/
 .hypothesis/
 
-# IDE
+# IDE & AI Assistant
 .vscode/
 .idea/
+.agents/
+.claude/
 *.swp
 *.swo
 *~

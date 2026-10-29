@@ -750,7 +750,7 @@ async def run_trading_robot(
     max_drawdown_pct: float = 5.0,
     sl_pips: float = 25.0,
     tp_pips: float = 50.0,
-    min_confidence: float = 80.0,
+    min_confidence: float = 65.0,
     loop: bool = False,
     interval_seconds: float = 30.0,
     cooldown_seconds: float = 60.0,
@@ -968,7 +968,7 @@ async def run_trading_robot(
 
                 if confidence < min_confidence and not action:
                     logger.info(
-                        "Signal %s for %s confidence %.1f%% < minimum %.1f%% (80%%+ high-probability threshold). Skipping.",
+                        "Signal %s for %s confidence %.1f%% < minimum %.1f%% (65%%+ high-probability threshold). Skipping.",
                         target_action,
                         sym,
                         confidence,
@@ -1216,8 +1216,8 @@ def main():
     parser.add_argument(
         "--min-confidence",
         type=float,
-        default=80.0,
-        help="Minimum signal confidence threshold to trigger a trade (default: 80.0%%)",
+        default=65.0,
+        help="Minimum signal confidence threshold to trigger a trade (default: 65.0%%)",
     )
     parser.add_argument(
         "--sl-pips",

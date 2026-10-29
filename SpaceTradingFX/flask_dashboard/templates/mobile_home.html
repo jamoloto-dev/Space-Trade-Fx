@@ -125,7 +125,7 @@
             <div class="content" style="flex: 1;">
                 <h3 id="auto-pilot-title" style="margin: 0; font-size: 15px; font-weight: 700;">
                     {% if preferences and preferences.trading_enabled %}
-                    Auto-Pilot Active (≥ 80% Confidence)
+                    Auto-Pilot Active (≥ 65% Confidence)
                     {% else %}
                     Auto-Pilot Paused (Manual Mode)
                     {% endif %}
@@ -134,7 +134,7 @@
                     {% if preferences and preferences.trading_enabled %}
                     Auto-executing high-confidence signals on {{ broker_account.server if broker_account and broker_account.is_connected else 'Connected Broker' }}
                     {% else %}
-                    Toggle ON to auto-execute market signals with ≥ 80% confidence
+                    Toggle ON to auto-execute market signals with ≥ 65% confidence
                     {% endif %}
                 </p>
             </div>
@@ -261,7 +261,7 @@ function toggleAutoPilot(enabled) {
         if (data.success) {
             if (data.enabled) {
                 if (card) card.classList.add('broker-active');
-                if (title) title.textContent = 'Auto-Pilot Active (≥ 80% Confidence)';
+                if (title) title.textContent = 'Auto-Pilot Active (≥ 65% Confidence)';
                 if (subtext) subtext.textContent = 'Auto-executing high-confidence signals on {{ broker_account.server if broker_account and broker_account.is_connected else "Connected Broker" }}';
                 if (icon) icon.style.color = '#4CAF50';
                 if (slider) slider.style.backgroundColor = '#4CAF50';
@@ -269,7 +269,7 @@ function toggleAutoPilot(enabled) {
             } else {
                 if (card) card.classList.remove('broker-active');
                 if (title) title.textContent = 'Auto-Pilot Paused (Manual Mode)';
-                if (subtext) subtext.textContent = 'Toggle ON to auto-execute market signals with ≥ 80% confidence';
+                if (subtext) subtext.textContent = 'Toggle ON to auto-execute market signals with ≥ 65% confidence';
                 if (icon) icon.style.color = '#F59E0B';
                 if (slider) slider.style.backgroundColor = '#4B5563';
                 if (knob) knob.style.left = '3px';

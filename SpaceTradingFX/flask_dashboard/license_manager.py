@@ -27,7 +27,9 @@ def _load_keys_from_env():
     priv_pem = os.environ.get("LICENSE_PRIVATE_KEY_PEM")
     if pub_pem and priv_pem:
         try:
-            return (rsa.PublicKey.load_pkcs1(pub_pem.encode()), rsa.PrivateKey.load_pkcs1(priv_pem.encode()))
+            pub_bytes = pub_pem.replace("\\n", "\n").strip().encode()
+            priv_bytes = priv_pem.replace("\\n", "\n").strip().encode()
+            return (rsa.PublicKey.load_pkcs1(pub_bytes), rsa.PrivateKey.load_pkcs1(priv_bytes))
         except Exception:
             pass
     # Fallback: generate ephemeral keys (log warning)

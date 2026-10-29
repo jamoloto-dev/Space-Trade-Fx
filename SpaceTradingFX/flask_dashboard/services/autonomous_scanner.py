@@ -1,7 +1,7 @@
 """Autonomous Background Trading Loop and Market Scanner Service.
 
 Periodically executes market scans across monitored symbols, synchronizes
-live open trade floating PnL/exits, and auto-executes high-confidence signals (>= 80%)
+live open trade floating PnL/exits, and auto-executes high-confidence signals (>= 65%)
 with strict duplicate-position protection and 200 EMA trend filtering.
 """
 

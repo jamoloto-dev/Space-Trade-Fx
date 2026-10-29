@@ -655,7 +655,7 @@ def api_broker_execute_signal():
 @trading_bp.route("/api/trading/toggle-auto-pilot", methods=["POST"])
 @login_required
 def api_trading_toggle_auto_pilot():
-    """Toggle Auto-Pilot Mode (Auto-execute signals >= 80% confidence)."""
+    """Toggle Auto-Pilot Mode (Auto-execute signals >= 65% confidence)."""
     from ..extensions import db
     from ..models import TradingPreference
 
@@ -674,7 +674,7 @@ def api_trading_toggle_auto_pilot():
     strategy = dict(prefs.strategy_settings or {})
     strategy["auto_pilot"] = new_state
     strategy["automated_broker_trading"] = new_state
-    strategy["min_confidence"] = 80
+    strategy["min_confidence"] = 65
     if new_state:
         strategy["circuit_breaker_tripped"] = False
         strategy["circuit_breaker_date"] = None
@@ -684,7 +684,7 @@ def api_trading_toggle_auto_pilot():
 
     db.session.commit()
     msg = (
-        "Auto-Pilot Mode activated (Auto-executing signals ≥ 80% confidence)"
+        "Auto-Pilot Mode activated (Auto-executing signals ≥ 65% confidence)"
         if new_state
         else "Auto-Pilot Mode paused (Manual execution only)"
     )
@@ -707,7 +707,7 @@ def api_trading_reset_circuit_breaker():
     strategy = dict(prefs.strategy_settings or {})
     strategy["auto_pilot"] = True
     strategy["automated_broker_trading"] = True
-    strategy["min_confidence"] = 80
+    strategy["min_confidence"] = 65
     strategy["circuit_breaker_tripped"] = False
     strategy["circuit_breaker_date"] = None
     strategy["circuit_breaker_pnl"] = "0.00"

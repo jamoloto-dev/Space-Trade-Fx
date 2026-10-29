@@ -174,9 +174,7 @@ class TradingEngine:
                 min_conf = float(
                     strat_settings.get(
                         "min_confidence",
-                        70.0
-                        if strat_settings.get("automated_paper_trading") and "min_confidence" not in strat_settings
-                        else 80.0,
+                        65.0,
                     )
                 )
 

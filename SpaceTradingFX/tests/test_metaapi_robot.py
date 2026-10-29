@@ -511,8 +511,8 @@ def test_confidence_threshold_and_symbol_restrictions():
     assert any(idx in "T100".upper() for idx in ("T100", "USTEC", "NAS100", "US30", "GER30"))
     assert not any(idx in "EURUSD.IFX".upper() for idx in ("T100", "USTEC", "NAS100", "US30", "GER30"))
 
-    # 2. Minimum confidence threshold default is 80%
+    # 2. Minimum confidence threshold default is 65%
     parser = argparse.ArgumentParser()
-    parser.add_argument("--min-confidence", type=float, default=80.0)
+    parser.add_argument("--min-confidence", type=float, default=65.0)
     args = parser.parse_args([])
-    assert args.min_confidence == 80.0
+    assert args.min_confidence == 65.0

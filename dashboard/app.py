@@ -177,7 +177,7 @@ with right_col:
     st.subheader("🛡️ Risk & Auto-Pilot Matrix")
     is_trading_active = st.session_state.get("trading_active", False)
     if is_trading_active:
-        st.info("🤖 **Auto-Pilot Status**: ACTIVE (≥80% Confidence Threshold)")
+        st.info("🤖 **Auto-Pilot Status**: ACTIVE (≥65% Confidence Threshold)")
     else:
         st.warning("🤖 **Auto-Pilot Status**: INACTIVE / PAUSED (Execution Hold)")
 
@@ -233,7 +233,7 @@ with right_col:
         st.caption("Robot execution is currently paused. Click 'START TRADING' to resume.")
 
     st.markdown("### Confidence Calibration")
-    st.progress(82, text="Current Composite Confidence: 82.0% (Threshold: 80%)")
+    st.progress(82, text="Current Composite Confidence: 82.0% (Threshold: 65%)")
 
 st.divider()
 
