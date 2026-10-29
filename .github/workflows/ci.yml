@@ -153,10 +153,12 @@ jobs:
             -p 8000:8000 \
             spacetradingfx:${{ github.sha }}
           
-          sleep 10
-          
-          # Health check
-          curl -f http://localhost:8000/health/live || exit 1
+          # Health check with retry to allow container to finish booting
+          curl --retry 15 --retry-connrefused --retry-delay 2 --retry-all-errors -f http://localhost:8000/health/live || {
+            echo "=== Container logs on healthcheck failure ==="
+            docker logs test-container
+            exit 1
+          }
           
           docker stop test-container
           docker rm test-container

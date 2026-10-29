@@ -11,7 +11,11 @@ if [ -z "${DATABASE_URL:-}" ]; then
 fi
 
 if [ -z "${LICENSE_PUBLIC_KEY_PEM:-}" ] || [ -z "${LICENSE_PRIVATE_KEY_PEM:-}" ]; then
-  eval "$(python3 -c 'import rsa; pub, priv = rsa.newkeys(2048); print("export LICENSE_PUBLIC_KEY_PEM=\"" + pub.save_pkcs1().decode().replace("\n", "\\\n") + "\""); print("export LICENSE_PRIVATE_KEY_PEM=\"" + priv.save_pkcs1().decode().replace("\n", "\\\n") + "\"")')"
+  KEY_BITS="2048"
+  if [ "${FLASK_ENV:-}" = "testing" ]; then
+    KEY_BITS="512"
+  fi
+  eval "$(python3 -c "import rsa; pub, priv = rsa.newkeys($KEY_BITS); print('export LICENSE_PUBLIC_KEY_PEM=\"' + pub.save_pkcs1().decode().replace('\n', '\\\n') + '\"'); print('export LICENSE_PRIVATE_KEY_PEM=\"' + priv.save_pkcs1().decode().replace('\n', '\\\n') + '\"')")"
 fi
 
 # Schema changes are part of each release. The web process does not start
