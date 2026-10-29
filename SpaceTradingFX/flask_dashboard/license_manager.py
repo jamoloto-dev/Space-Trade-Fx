@@ -45,8 +45,7 @@ def sanitize_key_pem(key_str: str | None) -> str | None:
 
     # Strip surrounding single or double quotes
     while len(cleaned) >= 2 and (
-        (cleaned.startswith('"') and cleaned.endswith('"'))
-        or (cleaned.startswith("'") and cleaned.endswith("'"))
+        (cleaned.startswith('"') and cleaned.endswith('"')) or (cleaned.startswith("'") and cleaned.endswith("'"))
     ):
         cleaned = cleaned[1:-1].strip()
 
@@ -223,7 +222,12 @@ def _load_keys_from_secret_files(
         try:
             priv_path = Path(priv_item)
             pub_path = Path(pub_item)
-            if priv_path.is_file() and pub_path.is_file() and priv_path.stat().st_size > 0 and pub_path.stat().st_size > 0:
+            if (
+                priv_path.is_file()
+                and pub_path.is_file()
+                and priv_path.stat().st_size > 0
+                and pub_path.stat().st_size > 0
+            ):
                 priv_pem = priv_path.read_text(encoding="utf-8")
                 pub_pem = pub_path.read_text(encoding="utf-8")
                 keys = _parse_rsa_keys(pub_pem, priv_pem)

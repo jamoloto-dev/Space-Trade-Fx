@@ -53,7 +53,7 @@ def test_sanitize_key_pem_surrounding_quotes():
     raw_sq = "'-----BEGIN RSA PUBLIC KEY-----\\nMIIB...\\n-----END RSA PUBLIC KEY-----'"
     assert sanitize_key_pem(raw_sq) == "-----BEGIN RSA PUBLIC KEY-----\nMIIB...\n-----END RSA PUBLIC KEY-----"
 
-    raw_nested = '  "\'-----BEGIN RSA PUBLIC KEY-----\\nMIIB...\\n-----END RSA PUBLIC KEY-----\'"  '
+    raw_nested = "  \"'-----BEGIN RSA PUBLIC KEY-----\\nMIIB...\\n-----END RSA PUBLIC KEY-----'\"  "
     assert sanitize_key_pem(raw_nested) == "-----BEGIN RSA PUBLIC KEY-----\nMIIB...\n-----END RSA PUBLIC KEY-----"
 
 
@@ -110,10 +110,14 @@ def test_parse_rsa_keys_pkcs8_and_spki():
         format=serialization.PrivateFormat.PKCS8,
         encryption_algorithm=serialization.NoEncryption(),
     ).decode()
-    spki_pub = crypto_key.public_key().public_bytes(
-        encoding=serialization.Encoding.PEM,
-        format=serialization.PublicFormat.SubjectPublicKeyInfo,
-    ).decode()
+    spki_pub = (
+        crypto_key.public_key()
+        .public_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo,
+        )
+        .decode()
+    )
 
     # Escaped as single-line Render env var with quotes
     escaped_priv = '"' + pkcs8_priv.replace("\n", "\\n") + '"'
