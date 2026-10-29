@@ -2,7 +2,7 @@
 # Multi-stage build for optimal image size
 
 # Stage 1: Build dependencies
-FROM python:3.12-slim as builder
+FROM python:3.12-slim AS builder
 
 WORKDIR /app
 
@@ -23,7 +23,7 @@ RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir gunicorn psycopg2-binary
 
 # Stage 2: Production image
-FROM python:3.12-slim as production
+FROM python:3.12-slim AS production
 
 WORKDIR /app
 
