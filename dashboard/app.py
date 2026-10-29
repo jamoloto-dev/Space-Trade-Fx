@@ -11,6 +11,7 @@ Comprehensive modern dashboard UI mirroring professional quant terminals:
 
 from __future__ import annotations
 
+import json
 import os
 import sqlite3
 import sys
@@ -34,9 +35,7 @@ st.set_page_config(
 
 
 def load_db_telemetry() -> tuple[dict, list]:
-    """Load latest live telemetry and open positions from SQLite database."""
-    db_path = os.environ.get("TRADING_DB_PATH", os.path.join(base_dir, "trading.db"))
-
+    """Load latest live telemetry and open positions via Flask API, PostgreSQL, or SQLite."""
     telemetry = {
         "balance": 16.55,
         "equity": 26.09,
@@ -64,6 +63,84 @@ def load_db_telemetry() -> tuple[dict, list]:
         },
     ]
 
+    # 1. Attempt internal Flask API telemetry query
+    api_url = os.environ.get("FLASK_INTERNAL_API_URL", "http://127.0.0.1:5000/api/broker/terminal-telemetry")
+    try:
+        import urllib.request
+
+        req = urllib.request.Request(api_url, headers={"User-Agent": "SpaceTradeTerminal/1.0"})
+        with urllib.request.urlopen(req, timeout=0.3) as resp:
+            if resp.status == 200:
+                data = json.loads(resp.read().decode("utf-8"))
+                if data.get("success"):
+                    telemetry["balance"] = float(data.get("balance", telemetry["balance"]))
+                    telemetry["equity"] = float(data.get("equity", telemetry["equity"]))
+                    telemetry["free_margin"] = float(data.get("free_margin", telemetry["free_margin"]))
+                    telemetry["currency_symbol"] = str(data.get("currency_symbol", telemetry["currency_symbol"]))
+                    telemetry["total_trades"] = int(data.get("total_trades", telemetry["total_trades"]))
+                    telemetry["win_rate"] = float(data.get("win_rate", telemetry["win_rate"]))
+                    if data.get("positions"):
+                        positions = list(data["positions"])
+                    return telemetry, positions
+    except Exception:
+        pass
+
+    # 2. Attempt SQLAlchemy query via DATABASE_URL if non-sqlite
+    db_url = os.environ.get("DATABASE_URL")
+    if db_url and not db_url.startswith("sqlite"):
+        if db_url.startswith("postgres://"):
+            db_url = db_url.replace("postgres://", "postgresql://", 1)
+        try:
+            from sqlalchemy import create_engine, text
+
+            engine = create_engine(db_url, pool_pre_ping=True)
+            with engine.connect() as conn:
+                acct = conn.execute(
+                    text(
+                        "SELECT balance, equity, free_margin, currency FROM broker_accounts WHERE is_connected = true LIMIT 1"
+                    )
+                ).fetchone()
+                if acct:
+                    telemetry["balance"] = float(acct[0] or 16.55)
+                    telemetry["equity"] = float(acct[1] or 26.09)
+                    telemetry["free_margin"] = float(acct[2] or 19.84)
+                    curr = str(acct[3] or "USD")
+                    telemetry["currency_symbol"] = "R" if curr.upper() == "ZAR" else "$"
+
+                t_stats = conn.execute(
+                    text(
+                        "SELECT count(*) as total, sum(CASE WHEN profit_loss > 0 THEN 1 ELSE 0 END) as wins FROM trades WHERE status = 'closed'"
+                    )
+                ).fetchone()
+                if t_stats and t_stats[0]:
+                    total = int(t_stats[0])
+                    wins = int(t_stats[1] or 0)
+                    telemetry["total_trades"] = total
+                    telemetry["win_rate"] = round((wins / total) * 100.0, 1)
+
+                open_rows = conn.execute(
+                    text(
+                        "SELECT broker_order_id, currency_pair, trade_type, lot_size, entry_price, profit_loss FROM trades WHERE status = 'open'"
+                    )
+                ).fetchall()
+                if open_rows:
+                    positions = [
+                        {
+                            "Ticket": r[0] or "N/A",
+                            "Symbol": r[1],
+                            "Type": r[2],
+                            "Lot Size": float(r[3] or 0.01),
+                            "Entry": float(r[4] or 0.0),
+                            "P/L ($)": float(r[5] or 0.0),
+                        }
+                        for r in open_rows
+                    ]
+                return telemetry, positions
+        except Exception:
+            pass
+
+    # 3. Fallback to local SQLite file
+    db_path = os.environ.get("TRADING_DB_PATH", os.path.join(base_dir, "trading.db"))
     if not os.path.exists(db_path):
         return telemetry, positions
 
@@ -258,11 +335,12 @@ st.markdown(
     "and inspect compiled `.ex4` and `.ex5` binaries."
 )
 
-adapt_tab1, adapt_tab2, adapt_tab3 = st.tabs(
+adapt_tab1, adapt_tab2, adapt_tab3, adapt_tab4 = st.tabs(
     [
         "Pipeline 1: Strategy Transpilation",
         "Pipeline 2: Universal Signal Bridge",
         "Pipeline 3: Binary Diagnostics",
+        "Pipeline 4: Vectorized Backtester",
     ]
 )
 
@@ -448,3 +526,72 @@ with adapt_tab3:
 
         st.markdown("##### Recommended Space-Trade-Fx Strategy")
         st.info(report.recommended_strategy)
+
+# Pipeline 4: Vectorized Backtester
+with adapt_tab4:
+    st.markdown("#### Space-Trade-Fx Vectorized Strategy Backtester & Institutional Tear Sheet")
+    st.caption(
+        "Executes adapted strategies against historical OHLCV candles to compute Sharpe ratio, "
+        "profit factor, win rate, and peak-to-trough drawdowns."
+    )
+
+    bt_c1, bt_c2, bt_c3 = st.columns(3)
+    with bt_c1:
+        bt_symbol = st.selectbox(
+            "Currency pair", options=["EURUSD", "GBPUSD", "USDJPY", "USDZAR", "XAUUSD"], index=0, key="bt_sym"
+        )
+    with bt_c2:
+        bt_capital = st.number_input(
+            "Starting capital ($)", min_value=100.0, max_value=1000000.0, value=10000.0, step=500.0, key="bt_cap"
+        )
+    with bt_c3:
+        bt_bars = st.number_input(
+            "Lookback candles (1H)", min_value=50, max_value=5000, value=300, step=50, key="bt_bars"
+        )
+
+    bt_code = st.text_area(
+        "Strategy code to backtest (.mq4 or Pine Script)",
+        value=default_sample_code,
+        height=140,
+        key="bt_source_code",
+    )
+
+    if st.button("Run vectorized backtest", type="primary", key="btn_run_backtest"):
+        from SpaceTradingFX.flask_dashboard.services.backtest_runner import BacktestConfig, SpaceTradeBacktestRunner
+
+        cfg = BacktestConfig(initial_capital=float(bt_capital))
+        runner = SpaceTradeBacktestRunner(cfg)
+        with st.spinner("Running institutional simulation..."):
+            try:
+                rep = runner.backtest_source_code(
+                    source_code=bt_code,
+                    source_language="mq4" if "start" in bt_code else "pine",
+                    symbol=bt_symbol,
+                    bars=int(bt_bars),
+                )
+
+                st.success("Backtest simulation completed!")
+
+                # Tear Sheet Metrics
+                r1, r2, r3, r4 = st.columns(4)
+                r1.metric("Net profit", f"${rep.total_net_profit:+.2f}", f"{rep.total_return_pct:+.2f}%")
+                r2.metric("Sharpe ratio", f"{rep.sharpe_ratio:.2f}")
+                r3.metric("Profit factor", f"{rep.profit_factor:.2f}")
+                r4.metric("Win rate", f"{rep.win_rate_pct:.1f}%", f"{rep.total_trades} Trades")
+
+                d1, d2 = st.columns(2)
+                d1.metric("Max drawdown ($)", f"${rep.max_drawdown_dollars:.2f}")
+                d2.metric("Max drawdown (%)", f"{rep.max_drawdown_pct:.2f}%")
+
+                # Equity Curve
+                if rep.equity_curve:
+                    st.markdown("##### Backtest Equity Curve vs Balance")
+                    eq_df = pd.DataFrame(rep.equity_curve).set_index("time")[["equity", "balance"]]
+                    st.line_chart(eq_df)
+
+                # Trades Table
+                if rep.trades:
+                    st.markdown("##### Executed Trade Log")
+                    st.dataframe(pd.DataFrame(rep.trades), width="stretch")
+            except Exception as exc:
+                st.error(f"Backtest execution error: {exc}")

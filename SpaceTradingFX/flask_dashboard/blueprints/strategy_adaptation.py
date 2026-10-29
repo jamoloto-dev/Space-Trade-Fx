@@ -158,3 +158,36 @@ def inspect_binary():
 
     report = binary_inspector.inspect_file(file_bytes, filename=filename)
     return jsonify(report.to_dict())
+
+
+@strategy_bp.post("/backtest")
+def run_strategy_backtest():
+    """
+    Run vectorized backtest on source strategy (.mq4 / Pine Script) and return institutional tear sheet.
+    """
+    from ..services.backtest_runner import BacktestConfig, SpaceTradeBacktestRunner
+
+    data = request.get_json(silent=True) or {}
+    source_code = data.get("source_code", "")
+    if not source_code or not source_code.strip():
+        return jsonify({"error": "source_code is required"}), 400
+
+    source_type = data.get("source_type", "mq4")
+    symbol = data.get("symbol", "EURUSD")
+    initial_capital = float(data.get("initial_capital", 10000.0))
+    lot_size = float(data.get("lot_size", 0.10))
+
+    cfg = BacktestConfig(initial_capital=initial_capital, lot_size=lot_size)
+    runner = SpaceTradeBacktestRunner(cfg)
+
+    try:
+        report = runner.backtest_source_code(
+            source_code=source_code,
+            source_language=source_type,
+            symbol=symbol,
+            bars=int(data.get("bars", 300)),
+        )
+        return jsonify({"success": True, "report": report.to_dict()})
+    except Exception as exc:
+        logger.exception("Backtest execution failed: %s", exc)
+        return jsonify({"success": False, "error": str(exc)}), 500

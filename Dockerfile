@@ -52,7 +52,8 @@ USER appuser
 # Set environment variables
 ENV FLASK_ENV=production \
     PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONPATH=/app
 
 # Expose port
 EXPOSE 8000

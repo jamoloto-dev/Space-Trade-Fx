@@ -96,7 +96,34 @@ def load_execution_state(base_dir: str | None = None) -> bool:
         except Exception as exc:
             logger.debug("Failed reading state JSON %s: %s", state_path, exc)
 
-    # 3. SQLite database fallback check
+    # 3. Database check (SQLAlchemy via DATABASE_URL if configured, or SQLite file fallback)
+    db_url = os.environ.get("DATABASE_URL")
+    if db_url and not db_url.startswith("sqlite"):
+        if db_url.startswith("postgres://"):
+            db_url = db_url.replace("postgres://", "postgresql://", 1)
+        try:
+            from sqlalchemy import create_engine, text
+
+            engine = create_engine(db_url, pool_pre_ping=True)
+            with engine.connect() as conn:
+                res = conn.execute(
+                    text("SELECT trading_enabled, strategy_settings FROM trading_preferences LIMIT 1")
+                ).fetchone()
+                if res:
+                    trading_enabled = bool(res[0])
+                    auto_pilot = True
+                    if res[1]:
+                        try:
+                            settings = json.loads(res[1]) if isinstance(res[1], str) else res[1]
+                            if isinstance(settings, dict):
+                                auto_pilot = bool(settings.get("auto_pilot", True))
+                        except Exception:
+                            pass
+                    return trading_enabled and auto_pilot
+        except Exception as exc:
+            logger.debug("Failed checking preferences via DATABASE_URL: %s", exc)
+
+    # 4. SQLite database fallback check
     db_path = get_db_path(base_dir)
     if os.path.exists(db_path):
         try:
@@ -169,7 +196,47 @@ def save_execution_state(
     except Exception as exc:
         logger.warning("Could not persist trigger file to %s: %s", trigger_path, exc)
 
-    # 3. Synchronize with SQLite database if present
+    # 3. Synchronize with database (SQLAlchemy via DATABASE_URL if configured, or SQLite fallback)
+    db_url = os.environ.get("DATABASE_URL")
+    if db_url and not db_url.startswith("sqlite"):
+        if db_url.startswith("postgres://"):
+            db_url = db_url.replace("postgres://", "postgresql://", 1)
+        try:
+            from sqlalchemy import create_engine, text
+
+            engine = create_engine(db_url, pool_pre_ping=True)
+            with engine.connect() as conn:
+                res = conn.execute(text("SELECT id, strategy_settings FROM trading_preferences LIMIT 1")).fetchone()
+                if res:
+                    pref_id, raw_settings = res[0], res[1]
+                    settings_dict: dict[str, Any] = {}
+                    if raw_settings:
+                        try:
+                            settings_dict = (
+                                json.loads(raw_settings) if isinstance(raw_settings, str) else dict(raw_settings)
+                            )
+                        except Exception:
+                            settings_dict = {}
+                    settings_dict["auto_pilot"] = bool(is_active)
+                    settings_dict["automated_broker_trading"] = bool(is_active)
+                    conn.execute(
+                        text(
+                            "UPDATE trading_preferences "
+                            "SET trading_enabled = :enabled, strategy_settings = :settings, updated_at = :updated "
+                            "WHERE id = :pref_id"
+                        ),
+                        {
+                            "enabled": 1 if is_active else 0,
+                            "settings": json.dumps(settings_dict),
+                            "updated": now_utc,
+                            "pref_id": pref_id,
+                        },
+                    )
+                    conn.commit()
+        except Exception as exc:
+            logger.debug("Could not update database via DATABASE_URL: %s", exc)
+
+    # 4. Synchronize with SQLite database fallback if present
     db_path = get_db_path(base_dir)
     if os.path.exists(db_path):
         try:
@@ -180,7 +247,7 @@ def save_execution_state(
                 if pref_row:
                     pref_id = pref_row[0]
                     raw_settings = pref_row[1]
-                    settings_dict: dict[str, Any] = {}
+                    settings_dict = {}
                     if raw_settings:
                         try:
                             settings_dict = (

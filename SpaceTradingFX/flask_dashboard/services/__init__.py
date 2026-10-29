@@ -49,6 +49,11 @@ from .autonomous_scanner import (
     start_autonomous_scheduler,
     stop_autonomous_scheduler,
 )
+from .backtest_runner import (
+    BacktestConfig,
+    BacktestReport,
+    SpaceTradeBacktestRunner,
+)
 from .binary_inspector import (
     SpaceTradeBinaryInspector,
     SpaceTradeBinaryReport,
@@ -72,11 +77,26 @@ from .broker_bridge import (
     sync_broker_positions,
     verify_and_connect,
 )
+from .execution_broker import (
+    AccountTelemetry,
+    CloseResult,
+    ExecutionBroker,
+    LiveMetaApiBroker,
+    OrderIntent,
+    OrderResult,
+    PaperExecutionBroker,
+    Position,
+)
 from .news_intelligence import (
     MacroNewsEngine,
     check_ai_veto,
     evaluate_macro_sentiment,
     get_macro_pulse,
+)
+from .risk_manager import (
+    RiskAssessmentResult,
+    RiskLimits,
+    SpaceTradeRiskManager,
 )
 from .signal_bridge import (
     SignalBridgeConfig,
@@ -87,6 +107,7 @@ from .strategy_transpiler import (
     SpaceTradeStrategyTranspiler,
     SpaceTradeTranspilationResult,
 )
+from .trade_worker import SpaceTradeWorker
 
 __all__ = [
     # Notifications
@@ -167,4 +188,21 @@ __all__ = [
     # Binary Diagnostics & Metadata Triage
     "SpaceTradeBinaryInspector",
     "SpaceTradeBinaryReport",
+    # Vectorized Backtesting Engine
+    "SpaceTradeBacktestRunner",
+    "BacktestConfig",
+    "BacktestReport",
+    # Execution Broker Protocol & Unified Worker
+    "ExecutionBroker",
+    "OrderIntent",
+    "OrderResult",
+    "CloseResult",
+    "Position",
+    "AccountTelemetry",
+    "PaperExecutionBroker",
+    "LiveMetaApiBroker",
+    "SpaceTradeRiskManager",
+    "RiskLimits",
+    "RiskAssessmentResult",
+    "SpaceTradeWorker",
 ]
