@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from typing import Mapping
 
 from flask import Flask, jsonify
@@ -29,7 +30,6 @@ def create_app(config_override: Mapping[str, object] | None = None) -> Flask:
         app.config.update(config_override)
 
     if not app.config.get("SECRET_KEY"):
-        import os
         app.config["SECRET_KEY"] = os.environ.get("SESSION_SECRET") or os.environ.get("SECRET_KEY")
 
     app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)  # type: ignore[method-assign]
@@ -66,8 +66,6 @@ def create_app(config_override: Mapping[str, object] | None = None) -> Flask:
     _register_health_endpoints(app)
 
     # Start non-blocking autonomous trading scheduler in live runtime
-    import os
-
     if not app.config.get("TESTING") and (not app.debug or os.environ.get("WERKZEUG_RUN_MAIN") == "true"):
         from .services.autonomous_scanner import start_autonomous_scheduler
 
