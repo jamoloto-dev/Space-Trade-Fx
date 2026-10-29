@@ -61,6 +61,7 @@ trading_state.json
 .env
 .env.local
 .env.*.local
+*.pem
 
 # Database
 *.db
