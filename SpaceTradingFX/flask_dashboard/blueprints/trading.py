@@ -8,7 +8,18 @@ import time
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 
-from flask import Blueprint, Response, current_app, flash, jsonify, redirect, render_template, request, url_for
+from flask import (
+    Blueprint,
+    Response,
+    current_app,
+    flash,
+    jsonify,
+    redirect,
+    render_template,
+    request,
+    stream_with_context,
+    url_for,
+)
 from flask_login import current_user, login_required
 
 from ..extensions import limiter
@@ -551,10 +562,10 @@ def stream_telemetry():
     from ..models import BrokerAccount
     from ..services.broker_bridge import get_broker_telemetry
 
+    user_id = getattr(current_user, "id", None) if getattr(current_user, "is_authenticated", False) else None
+    is_testing = bool(current_app.config.get("TESTING", False))
+
     def event_stream():
-        user_id = getattr(current_user, "id", None) if not current_user.is_anonymous else None
-        # Support single iteration for testing mode
-        is_testing = current_app.config.get("TESTING", False)
         while True:
             try:
                 now_iso = datetime.now(timezone.utc).isoformat()
@@ -585,7 +596,7 @@ def stream_telemetry():
                 break
 
     return Response(
-        event_stream(),
+        stream_with_context(event_stream()),
         mimetype="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
@@ -748,7 +759,7 @@ def api_trading_auto_pilot_status():
     """Retrieve auto-pilot execution status for internal terminals and dashboards."""
     from ..models import TradingPreference
 
-    user_id = getattr(current_user, "id", None) if not current_user.is_anonymous else None
+    user_id = getattr(current_user, "id", None) if getattr(current_user, "is_authenticated", False) else None
     if user_id:
         prefs = TradingPreference.query.filter_by(user_id=user_id).first()
     else:
