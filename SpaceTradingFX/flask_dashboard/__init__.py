@@ -80,12 +80,14 @@ def _register_blueprints(app: Flask) -> None:
     from .admin import bp as admin_bp
     from .blueprints.mobile import mobile_bp
     from .blueprints.secure_auth import auth_bp
+    from .blueprints.strategy_adaptation import strategy_bp
     from .blueprints.trading import trading_bp
     from .payments import bp as payments_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(mobile_bp, url_prefix="/m")
     app.register_blueprint(trading_bp)
+    app.register_blueprint(strategy_bp)
     app.register_blueprint(activation_bp)
     app.register_blueprint(payments_bp)
     app.register_blueprint(admin_bp)

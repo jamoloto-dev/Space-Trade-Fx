@@ -49,6 +49,10 @@ from .autonomous_scanner import (
     start_autonomous_scheduler,
     stop_autonomous_scheduler,
 )
+from .binary_inspector import (
+    SpaceTradeBinaryInspector,
+    SpaceTradeBinaryReport,
+)
 from .broker_bridge import (
     DEFAULT_SYMBOL_SPECS,
     BrokerConnectionError,
@@ -73,6 +77,15 @@ from .news_intelligence import (
     check_ai_veto,
     evaluate_macro_sentiment,
     get_macro_pulse,
+)
+from .signal_bridge import (
+    SignalBridgeConfig,
+    SpaceTradeSignalBridge,
+)
+from .strategy_transpiler import (
+    SpaceTradeStrategyEngine,
+    SpaceTradeStrategyTranspiler,
+    SpaceTradeTranspilationResult,
 )
 
 __all__ = [
@@ -144,4 +157,14 @@ __all__ = [
     "check_ai_veto",
     "evaluate_macro_sentiment",
     "get_macro_pulse",
+    # Strategy Adaptation & Transpilation Engine
+    "SpaceTradeStrategyEngine",
+    "SpaceTradeStrategyTranspiler",
+    "SpaceTradeTranspilationResult",
+    # Universal Signal Bridge
+    "SpaceTradeSignalBridge",
+    "SignalBridgeConfig",
+    # Binary Diagnostics & Metadata Triage
+    "SpaceTradeBinaryInspector",
+    "SpaceTradeBinaryReport",
 ]
