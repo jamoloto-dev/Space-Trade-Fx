@@ -143,8 +143,7 @@ def _parse_rsa_keys(pub_pem_raw: str, priv_pem_raw: str) -> tuple[rsa.PublicKey,
 def _load_pem_key(
     env_var_name: str,
     secret_filename: str,
-    return_source: bool = False,
-) -> str | tuple[str, str] | None:
+) -> str | None:
     """Resolve a PEM key string across candidate file paths and environment variables.
 
     Priority order:
@@ -172,7 +171,7 @@ def _load_pem_key(
                 content = custom_path.read_text(encoding="utf-8")
                 res = PemString(content)
                 res.source = "secret_file"
-                return (res, "secret_file") if return_source else res
+                return res
         except Exception as exc:
             logger.debug("Failed reading %s at %s: %s", path_env_var, custom_path_str, exc)
 
@@ -191,7 +190,7 @@ def _load_pem_key(
                 content = p.read_text(encoding="utf-8")
                 res = PemString(content)
                 res.source = "secret_file"
-                return (res, "secret_file") if return_source else res
+                return res
         except Exception as exc:
             logger.debug("Failed reading candidate file %s: %s", p, exc)
 
@@ -200,9 +199,9 @@ def _load_pem_key(
     if env_val and env_val.strip():
         res = PemString(env_val)
         res.source = "env_var"
-        return (res, "env_var") if return_source else res
+        return res
 
-    return (None, None) if return_source else None
+    return None
 
 
 def _load_keys_from_secret_files(
