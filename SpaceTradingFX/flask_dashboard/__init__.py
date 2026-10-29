@@ -19,13 +19,18 @@ def create_app(config_override: Mapping[str, object] | None = None) -> Flask:
     """Create one explicitly configured SpaceTradingFX web application."""
     app = Flask(__name__)
     config_class = get_config()
+
+    errors = config_class.validate()
+    if errors and not (config_override and config_override.get("TESTING")):
+        raise RuntimeError("Invalid application configuration: " + "; ".join(errors))
+
     app.config.from_object(config_class)
     if config_override:
         app.config.update(config_override)
 
-    errors = config_class.validate()
-    if errors and not app.config.get("TESTING"):
-        raise RuntimeError("Invalid application configuration: " + "; ".join(errors))
+    if not app.config.get("SECRET_KEY"):
+        import os
+        app.config["SECRET_KEY"] = os.environ.get("SESSION_SECRET") or os.environ.get("SECRET_KEY")
 
     app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)  # type: ignore[method-assign]
     app.logger.setLevel(logging.DEBUG if app.config.get("DEBUG") else logging.INFO)

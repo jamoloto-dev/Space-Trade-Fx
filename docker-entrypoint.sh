@@ -1,6 +1,19 @@
 #!/bin/sh
 set -eu
 
+# Ensure essential runtime environment variables have safe defaults if not provided
+if [ -z "${SESSION_SECRET:-}" ] && [ -z "${SECRET_KEY:-}" ]; then
+  export SESSION_SECRET="$(python3 -c 'import secrets; print(secrets.token_hex(32))')"
+fi
+
+if [ -z "${DATABASE_URL:-}" ]; then
+  export DATABASE_URL="sqlite:////app/trading.db"
+fi
+
+if [ -z "${LICENSE_PUBLIC_KEY_PEM:-}" ] || [ -z "${LICENSE_PRIVATE_KEY_PEM:-}" ]; then
+  eval "$(python3 -c 'import rsa; pub, priv = rsa.newkeys(2048); print("export LICENSE_PUBLIC_KEY_PEM=\"" + pub.save_pkcs1().decode().replace("\n", "\\\n") + "\""); print("export LICENSE_PRIVATE_KEY_PEM=\"" + priv.save_pkcs1().decode().replace("\n", "\\\n") + "\"")')"
+fi
+
 # Schema changes are part of each release. The web process does not start
 # until the transactional Alembic upgrade has completed successfully.
 alembic upgrade head

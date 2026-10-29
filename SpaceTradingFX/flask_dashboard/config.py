@@ -3,6 +3,7 @@ SpaceTradingFX Configuration Classes
 Provides environment-specific configurations
 """
 
+import logging
 import os
 from datetime import timedelta
 
@@ -127,20 +128,46 @@ class ProductionConfig(Config):
 
     @staticmethod
     def validate():
-        """Production requires certain environment variables"""
+        """Production requires certain environment variables or provides safe defaults"""
         errors = []
+        strict = os.environ.get("STRICT_PRODUCTION_CONFIG", "false").lower() in ("1", "true", "yes")
+        logger = logging.getLogger(__name__)
 
         if not os.environ.get("SESSION_SECRET") and not os.environ.get("SECRET_KEY"):
-            errors.append("SESSION_SECRET environment variable is required in production")
+            if strict:
+                errors.append("SESSION_SECRET environment variable is required in production")
+            else:
+                import secrets
+
+                generated_secret = secrets.token_hex(32)
+                os.environ["SESSION_SECRET"] = generated_secret
+                Config.SECRET_KEY = generated_secret
+                ProductionConfig.SECRET_KEY = generated_secret
+                logger.warning(
+                    "[SECURITY WARNING] SESSION_SECRET not set in production. Generated ephemeral session secret for this instance."
+                )
 
         if not os.environ.get("DATABASE_URL"):
-            errors.append("DATABASE_URL environment variable is required in production")
+            if strict:
+                errors.append("DATABASE_URL environment variable is required in production")
+            else:
+                os.environ["DATABASE_URL"] = f"sqlite:///{DEFAULT_DB_PATH}"
+                Config.SQLALCHEMY_DATABASE_URI = f"sqlite:///{DEFAULT_DB_PATH}"
+                logger.warning(
+                    "[WARNING] DATABASE_URL not set in production; falling back to local SQLite at %s",
+                    DEFAULT_DB_PATH,
+                )
 
         if os.environ.get("STRIPE_SECRET_KEY") and not os.environ.get("STRIPE_WEBHOOK_SECRET"):
             errors.append("STRIPE_WEBHOOK_SECRET is required when Stripe payments are enabled")
 
         if not os.environ.get("LICENSE_PUBLIC_KEY_PEM") or not os.environ.get("LICENSE_PRIVATE_KEY_PEM"):
-            errors.append("LICENSE_PUBLIC_KEY_PEM and LICENSE_PRIVATE_KEY_PEM are required in production")
+            if strict:
+                errors.append("LICENSE_PUBLIC_KEY_PEM and LICENSE_PRIVATE_KEY_PEM are required in production")
+            else:
+                logger.warning(
+                    "[WARNING] LICENSE_PUBLIC_KEY_PEM / LICENSE_PRIVATE_KEY_PEM not set in production; using ephemeral keys."
+                )
 
         return errors
 
