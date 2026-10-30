@@ -10,10 +10,16 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import threading
 import time
 from datetime import datetime, timezone
 from typing import Any
+
+try:
+    import fcntl
+except ImportError:
+    fcntl = None  # type: ignore[assignment]
 
 from .execution_broker import ExecutionBroker, OrderIntent, OrderResult, PaperExecutionBroker
 from .risk_manager import RiskAssessmentResult, SpaceTradeRiskManager
@@ -46,7 +52,17 @@ class SpaceTradeWorker:
         """
         Execute a single autonomous scanning and execution cycle.
         """
-        from trading_state import load_execution_state, save_execution_state
+        try:
+            import trading_state
+
+            load_execution_state = getattr(trading_state, "load_execution_state", None)
+            save_execution_state = getattr(trading_state, "save_execution_state", None)
+        except ImportError:
+            load_execution_state = None
+            save_execution_state = None
+
+        if load_execution_state is None or save_execution_state is None:
+            from .trading_state import load_execution_state, save_execution_state
 
         self.cycle_count += 1
         now_utc = datetime.now(timezone.utc).isoformat()
@@ -146,7 +162,13 @@ class SpaceTradeWorker:
     def _evaluate_market_signal(self, symbol: str) -> dict[str, Any] | None:
         """Evaluate market conditions and return trade intent with confidence score."""
         try:
-            from models.signal_engine import SignalEngine
+            try:
+                from models.signal_engine import SignalEngine
+            except ImportError:
+                SignalEngine = None
+
+            if SignalEngine is None:
+                return {"action": "HOLD", "confidence": 50.0}
 
             sig_eng = SignalEngine()
             # Feed baseline market pulse
@@ -174,6 +196,8 @@ class SpaceTradeWorker:
                     self.run_cycle()
                 except Exception as exc:
                     logger.error(f"SpaceTradeWorker cycle error: {exc}")
+                    # Minimum backoff sleep on error to prevent tight looping
+                    await asyncio.sleep(max(5, min(interval_seconds, 30)))
 
                 await asyncio.sleep(interval_seconds)
         finally:
@@ -184,26 +208,81 @@ class SpaceTradeWorker:
 _worker_daemon_thread: threading.Thread | None = None
 _worker_daemon_stop = threading.Event()
 _worker_daemon_lock = threading.Lock()
+_worker_lock_file: Any = None
+_worker_lock_fd: int | None = None
+
+
+def _acquire_worker_process_lock(lock_path: str = "/tmp/space_trade_worker.lock") -> bool:
+    """Acquire non-blocking exclusive file lock to ensure only one OS process runs worker loop."""
+    global _worker_lock_file, _worker_lock_fd
+    if fcntl is None:
+        return True
+
+    try:
+        os.makedirs(os.path.dirname(lock_path), exist_ok=True)
+        f = open(lock_path, "a+")
+        fcntl.flock(f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        _worker_lock_file = f
+        _worker_lock_fd = f.fileno()
+        return True
+    except (BlockingIOError, OSError):
+        if "_worker_lock_file" in globals() and _worker_lock_file:
+            try:
+                _worker_lock_file.close()
+            except Exception:
+                pass
+            _worker_lock_file = None
+            _worker_lock_fd = None
+        return False
+
+
+def _release_worker_process_lock() -> None:
+    """Release exclusive file lock if held."""
+    global _worker_lock_file, _worker_lock_fd
+    if fcntl is not None and _worker_lock_file:
+        try:
+            fcntl.flock(_worker_lock_file.fileno(), fcntl.LOCK_UN)
+            _worker_lock_file.close()
+        except Exception:
+            pass
+        _worker_lock_file = None
+        _worker_lock_fd = None
 
 
 def start_space_trade_worker_daemon(
     app: Any | None = None,
     worker: SpaceTradeWorker | None = None,
     interval_seconds: int = 30,
+    lock_path: str = "/tmp/space_trade_worker.lock",
 ) -> threading.Thread | None:
-    """Start SpaceTradeWorker as an in-process background daemon thread."""
+    """Start SpaceTradeWorker as an in-process background daemon thread.
+
+    Guarded by an in-process mutex and a cross-process file lock (fcntl.flock)
+    so that when Gunicorn forks multiple worker processes, only ONE process
+    starts the background SpaceTradeWorker thread.
+    """
     global _worker_daemon_thread, _worker_daemon_stop
 
     with _worker_daemon_lock:
         if _worker_daemon_thread and _worker_daemon_thread.is_alive():
+            logger.debug("SpaceTradeWorker daemon thread is already running in this process.")
             return _worker_daemon_thread
+
+        # Acquire cross-process file lock so only one Gunicorn worker runs the daemon
+        if not _acquire_worker_process_lock(lock_path):
+            logger.info(
+                f"SpaceTradeWorker daemon lock ({lock_path}) held by another process; "
+                f"skipping background worker startup in PID {os.getpid()}."
+            )
+            return None
 
         _worker_daemon_stop.clear()
         active_worker = worker or SpaceTradeWorker()
 
         def _thread_target():
-            logger.info("SpaceTradeWorker in-process daemon started (interval=%ss)", interval_seconds)
+            logger.info(f"SpaceTradeWorker in-process daemon started (interval={interval_seconds}s, pid={os.getpid()})")
             while not _worker_daemon_stop.is_set():
+                cycle_had_error = False
                 try:
                     if app:
                         with app.app_context():
@@ -218,14 +297,23 @@ def start_space_trade_worker_daemon(
                     else:
                         active_worker.run_cycle()
                 except Exception as exc:
-                    logger.error("Error in SpaceTradeWorker daemon cycle: %s", exc)
+                    cycle_had_error = True
+                    logger.error(f"Error in SpaceTradeWorker daemon cycle: {exc}")
+                    # Minimum backoff sleep inside error handler to prevent tight-looping
+                    backoff_seconds = max(5, min(interval_seconds, 30))
+                    sleep_elapsed = 0
+                    while sleep_elapsed < backoff_seconds and not _worker_daemon_stop.is_set():
+                        time.sleep(1)
+                        sleep_elapsed += 1
 
-                sleep_elapsed = 0
-                while sleep_elapsed < interval_seconds and not _worker_daemon_stop.is_set():
-                    time.sleep(1)
-                    sleep_elapsed += 1
+                if not cycle_had_error:
+                    sleep_elapsed = 0
+                    while sleep_elapsed < interval_seconds and not _worker_daemon_stop.is_set():
+                        time.sleep(1)
+                        sleep_elapsed += 1
 
-            logger.info("SpaceTradeWorker in-process daemon stopped.")
+            _release_worker_process_lock()
+            logger.info(f"SpaceTradeWorker in-process daemon stopped (pid={os.getpid()}).")
 
         t = threading.Thread(target=_thread_target, name="SpaceTradeWorkerDaemon", daemon=True)
         t.start()
@@ -235,5 +323,10 @@ def start_space_trade_worker_daemon(
 
 def stop_space_trade_worker_daemon() -> None:
     """Signal the in-process SpaceTradeWorker daemon thread to stop."""
-    global _worker_daemon_stop
-    _worker_daemon_stop.set()
+    global _worker_daemon_stop, _worker_daemon_thread
+    with _worker_daemon_lock:
+        _worker_daemon_stop.set()
+        if _worker_daemon_thread and _worker_daemon_thread.is_alive():
+            _worker_daemon_thread.join(timeout=3.0)
+            _worker_daemon_thread = None
+        _release_worker_process_lock()

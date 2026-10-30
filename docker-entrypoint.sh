@@ -1,6 +1,8 @@
 #!/bin/sh
 set -eu
 
+export PYTHONPATH="/app:/app/SpaceTradingFX:${PYTHONPATH:-}"
+
 # Ensure essential runtime environment variables have safe defaults if not provided
 if [ -z "${SESSION_SECRET:-}" ] && [ -z "${SECRET_KEY:-}" ]; then
   export SESSION_SECRET="$(python3 -c 'import secrets; print(secrets.token_hex(32))')"

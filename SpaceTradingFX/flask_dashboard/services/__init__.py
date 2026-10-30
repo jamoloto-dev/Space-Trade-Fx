@@ -120,6 +120,17 @@ from .trade_worker import (
     start_space_trade_worker_daemon,
     stop_space_trade_worker_daemon,
 )
+from .trading_state import (
+    DB_FILE_NAME,
+    STATE_FILE_NAME,
+    TRIGGER_FILE_NAME,
+    get_db_path,
+    get_state_file_path,
+    get_trigger_file_path,
+    is_execution_authorized,
+    load_execution_state,
+    save_execution_state,
+)
 
 __all__ = [
     # Notifications
@@ -227,4 +238,14 @@ __all__ = [
     "SpaceTradeWorker",
     "start_space_trade_worker_daemon",
     "stop_space_trade_worker_daemon",
+    # Trading State Management
+    "DB_FILE_NAME",
+    "STATE_FILE_NAME",
+    "TRIGGER_FILE_NAME",
+    "get_db_path",
+    "get_state_file_path",
+    "get_trigger_file_path",
+    "is_execution_authorized",
+    "load_execution_state",
+    "save_execution_state",
 ]

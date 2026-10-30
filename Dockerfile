@@ -42,6 +42,8 @@ ENV PATH="/opt/venv/bin:$PATH"
 COPY SpaceTradingFX/flask_dashboard ./flask_dashboard
 COPY SpaceTradingFX/requirements.txt alembic.ini docker-entrypoint.sh ./
 COPY migrations ./migrations
+COPY trading_state.py ./
+COPY models ./models
 
 # Create non-root user for security
 RUN chmod 0755 /app/docker-entrypoint.sh && \
@@ -53,7 +55,7 @@ USER appuser
 ENV FLASK_ENV=production \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONPATH=/app
+    PYTHONPATH="/app:/app/SpaceTradingFX"
 
 # Expose port
 EXPOSE 8000

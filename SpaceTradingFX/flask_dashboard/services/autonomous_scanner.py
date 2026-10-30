@@ -145,10 +145,7 @@ def run_autonomous_cycle(app: Flask, force_scan: bool = False) -> dict[str, Any]
                             except Exception:
                                 pass
                             logger.warning(
-                                "Circuit Breaker Tripped for user %s: Daily P/L %s reached limit -%s",
-                                user_id,
-                                total_daily_pnl,
-                                max_loss_amount,
+                                f"Circuit Breaker Tripped for user {user_id}: Daily P/L {total_daily_pnl} reached limit -{max_loss_amount}"
                             )
 
                     # 4. Check if Rollover spread protection is active
@@ -166,17 +163,19 @@ def run_autonomous_cycle(app: Flask, force_scan: bool = False) -> dict[str, Any]
                         )
                     )
                     try:
-                        from trading_state import is_execution_authorized
-
-                        if not is_execution_authorized():
-                            auto_pilot_enabled = False
+                        from .trading_state import is_execution_authorized
                     except ImportError:
-                        pass
+                        try:
+                            from trading_state import is_execution_authorized
+                        except ImportError:
+                            is_execution_authorized = None
+
+                    if is_execution_authorized and not is_execution_authorized():
+                        auto_pilot_enabled = False
 
                     if in_rollover and (prefs and prefs.trading_enabled):
                         logger.info(
-                            "Rollover spread protection active (23:55-01:05 SAST), Auto-Pilot order execution paused for %s",
-                            user_id,
+                            f"Rollover spread protection active (23:55-01:05 SAST), Auto-Pilot order execution paused for {user_id}"
                         )
 
                     if force_scan or auto_pilot_enabled:
@@ -200,9 +199,7 @@ def run_autonomous_cycle(app: Flask, force_scan: bool = False) -> dict[str, Any]
 def _worker_loop(app: Flask, scan_interval_seconds: int = 900, sync_interval_seconds: int = 30) -> None:
     """Continuous non-blocking background loop."""
     logger.info(
-        "Autonomous trading scheduler started (scan_interval=%ss, sync_interval=%ss)",
-        scan_interval_seconds,
-        sync_interval_seconds,
+        f"Autonomous trading scheduler started (scan_interval={scan_interval_seconds}s, sync_interval={sync_interval_seconds}s)"
     )
     last_scan_time = 0.0
 
@@ -215,7 +212,7 @@ def _worker_loop(app: Flask, scan_interval_seconds: int = 900, sync_interval_sec
             if is_scan_due:
                 last_scan_time = now
         except Exception as exc:
-            logger.exception("Unexpected exception in autonomous scheduler loop: %s", exc)
+            logger.exception(f"Unexpected exception in autonomous scheduler loop: {exc}")
 
         # Sleep in short increments to allow rapid shutdown
         sleep_elapsed = 0
