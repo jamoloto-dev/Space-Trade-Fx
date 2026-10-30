@@ -8,8 +8,16 @@ if [ -z "${SESSION_SECRET:-}" ] && [ -z "${SECRET_KEY:-}" ]; then
   export SESSION_SECRET="$(python3 -c 'import secrets; print(secrets.token_hex(32))')"
 fi
 
-if [ -z "${DATABASE_URL:-}" ]; then
+if [ -z "${DATABASE_URL:-}" ] || echo "${DATABASE_URL}" | grep -q "<database-password>"; then
   export DATABASE_URL="sqlite:////app/trading.db"
+elif echo "${DATABASE_URL}" | grep -q "@db[:/]"; then
+  # '@db' is the internal docker-compose service name. If host 'db' cannot be resolved via DNS,
+  # fall back gracefully to SQLite instead of crashing Alembic / PostgreSQL connection on Render.
+  if ! python3 -c 'import socket; socket.gethostbyname("db")' 2>/dev/null; then
+    echo "[WARNING] DATABASE_URL points to host 'db', but 'db' cannot be resolved outside Docker Compose."
+    echo "[WARNING] Falling back to SQLite at sqlite:////app/trading.db. To use PostgreSQL on Render, set DATABASE_URL to your Render internal database URL."
+    export DATABASE_URL="sqlite:////app/trading.db"
+  fi
 fi
 
 if [ -z "${LICENSE_PUBLIC_KEY_PEM:-}" ] || [ -z "${LICENSE_PRIVATE_KEY_PEM:-}" ]; then
