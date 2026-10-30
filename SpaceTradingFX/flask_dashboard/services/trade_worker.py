@@ -52,24 +52,20 @@ class SpaceTradeWorker:
         """
         Execute a single autonomous scanning and execution cycle.
         """
-        try:
-            import trading_state
+        import sys
 
-            load_execution_state = getattr(trading_state, "load_execution_state", None)
-            save_execution_state = getattr(trading_state, "save_execution_state", None)
-        except ImportError:
-            load_execution_state = None
-            save_execution_state = None
+        from .trading_state import load_execution_state, save_execution_state
 
-        if load_execution_state is None or save_execution_state is None:
-            from .trading_state import load_execution_state, save_execution_state
+        ts_mod = sys.modules.get("trading_state")
+        load_fn = getattr(ts_mod, "load_execution_state", load_execution_state)
+        save_fn = getattr(ts_mod, "save_execution_state", save_execution_state)
 
         self.cycle_count += 1
         now_utc = datetime.now(timezone.utc).isoformat()
         self.last_cycle_timestamp = now_utc
 
         # 1. Check Global Auto-Pilot Authority
-        if not load_execution_state():
+        if not load_fn():
             logger.info("SpaceTradeWorker: Auto-pilot execution paused / on hold.")
             return {
                 "status": "paused",
@@ -85,7 +81,7 @@ class SpaceTradeWorker:
             logger.warning(
                 f"SpaceTradeWorker: Circuit breaker tripped ({dd_pct:.2f}% daily drawdown). Disabling auto-pilot."
             )
-            save_execution_state(False, source="circuit_breaker")
+            save_fn(False, source="circuit_breaker")
             return {
                 "status": "circuit_breaker_tripped",
                 "drawdown_pct": dd_pct,
@@ -162,13 +158,7 @@ class SpaceTradeWorker:
     def _evaluate_market_signal(self, symbol: str) -> dict[str, Any] | None:
         """Evaluate market conditions and return trade intent with confidence score."""
         try:
-            try:
-                from models.signal_engine import SignalEngine
-            except ImportError:
-                SignalEngine = None
-
-            if SignalEngine is None:
-                return {"action": "HOLD", "confidence": 50.0}
+            from models.signal_engine import SignalEngine
 
             sig_eng = SignalEngine()
             # Feed baseline market pulse

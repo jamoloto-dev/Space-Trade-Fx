@@ -162,15 +162,13 @@ def run_autonomous_cycle(app: Flask, force_scan: bool = False) -> dict[str, Any]
                             or strategy.get("automated_broker_trading")
                         )
                     )
-                    try:
-                        from .trading_state import is_execution_authorized
-                    except ImportError:
-                        try:
-                            from trading_state import is_execution_authorized
-                        except ImportError:
-                            is_execution_authorized = None
+                    import sys
 
-                    if is_execution_authorized and not is_execution_authorized():
+                    from .trading_state import is_execution_authorized
+
+                    ts_mod = sys.modules.get("trading_state")
+                    auth_fn = getattr(ts_mod, "is_execution_authorized", is_execution_authorized)
+                    if not auth_fn():
                         auto_pilot_enabled = False
 
                     if in_rollover and (prefs and prefs.trading_enabled):

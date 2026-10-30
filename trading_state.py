@@ -7,25 +7,15 @@ Thin re-export bridging to flask_dashboard.services.trading_state for backward c
 
 from __future__ import annotations
 
-try:
-    from flask_dashboard.services import trading_state as _impl
-except ImportError:
-    try:
-        from SpaceTradingFX.flask_dashboard.services import trading_state as _impl
-    except ImportError:
-        import importlib.util
-        from pathlib import Path
+import sys
+from pathlib import Path
 
-        _candidate = (
-            Path(__file__).resolve().parent / "SpaceTradingFX" / "flask_dashboard" / "services" / "trading_state.py"
-        )
-        if _candidate.is_file():
-            _spec = importlib.util.spec_from_file_location("flask_dashboard.services.trading_state", _candidate)
-            _impl = importlib.util.module_from_spec(_spec)
-            assert _spec.loader is not None
-            _spec.loader.exec_module(_impl)
-        else:
-            raise
+# Ensure SpaceTradingFX package root is on sys.path if not present
+_space_trading_fx_dir = str(Path(__file__).resolve().parent / "SpaceTradingFX")
+if _space_trading_fx_dir not in sys.path:
+    sys.path.insert(0, _space_trading_fx_dir)
+
+from flask_dashboard.services import trading_state as _impl  # noqa: E402
 
 STATE_FILE_NAME = _impl.STATE_FILE_NAME
 TRIGGER_FILE_NAME = _impl.TRIGGER_FILE_NAME
