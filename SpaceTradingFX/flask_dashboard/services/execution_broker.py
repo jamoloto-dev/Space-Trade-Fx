@@ -8,6 +8,7 @@ and live MT5 / MetaApi broker accounts.
 from __future__ import annotations
 
 import logging
+import os
 from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
 
@@ -210,13 +211,26 @@ class LiveMetaApiBroker:
     def __init__(self, user_id: str) -> None:
         self.user_id = user_id
 
+    def resolve_symbol(self, symbol: str) -> str:
+        """Resolve standard 6-letter or asset symbol to broker-specific suffixed symbol (.ifx)."""
+        from ..models import BrokerAccount
+        from .broker_bridge import resolve_broker_symbol
+
+        try:
+            account = BrokerAccount.query.filter_by(user_id=self.user_id, is_connected=True).first()
+            server = account.server if account else os.environ.get("METAAPI_SERVER", "")
+            return resolve_broker_symbol(symbol, server)
+        except Exception:
+            return resolve_broker_symbol(symbol, os.environ.get("METAAPI_SERVER", ""))
+
     def submit_order(self, intent: OrderIntent) -> OrderResult:
         from .broker_bridge import BrokerExecutionError, execute_robot_trade
 
+        target_symbol = self.resolve_symbol(intent.symbol)
         try:
             res = execute_robot_trade(
                 user_id=self.user_id,
-                symbol=intent.symbol,
+                symbol=target_symbol,
                 order_type=intent.trade_type,
                 volume=intent.lot_size,
                 sl=intent.stop_loss,
@@ -225,18 +239,18 @@ class LiveMetaApiBroker:
             )
             return OrderResult(
                 success=bool(res.get("success")),
-                ticket=str(res.get("order_id", "")),
-                symbol=intent.symbol,
+                ticket=str(res.get("order_id", "") or res.get("ticket", "")),
+                symbol=target_symbol,
                 trade_type=intent.trade_type,
                 lot_size=float(intent.lot_size),
-                execution_price=float(res.get("price", 0.0)),
+                execution_price=float(res.get("price", 0.0) or res.get("fill_price", 0.0)),
                 execution_mode="live_metaapi",
             )
         except BrokerExecutionError as exc:
             logger.error(f"LiveMetaApiBroker execution failed: {exc}")
             return OrderResult(
                 success=False,
-                symbol=intent.symbol,
+                symbol=target_symbol,
                 trade_type=intent.trade_type,
                 execution_mode="live_metaapi",
                 error=str(exc),
@@ -247,10 +261,11 @@ class LiveMetaApiBroker:
         return CloseResult(success=True, ticket=ticket, profit_loss=0.0)
 
     def get_positions(self) -> list[Position]:
-        from .broker_bridge import fetch_metaapi_positions
+        from .broker_bridge import fetch_metaapi_positions, get_active_metaapi_account_id
 
         try:
-            raw_pos = fetch_metaapi_positions(self.user_id)
+            account_id = get_active_metaapi_account_id(user_id=self.user_id)
+            raw_pos = fetch_metaapi_positions(account_id)
             return [
                 Position(
                     ticket=str(p.get("id", "")),

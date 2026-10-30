@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import threading
+import time
 from datetime import datetime, timezone
 from typing import Any
 
@@ -86,8 +88,9 @@ class SpaceTradeWorker:
                 logger.info("SpaceTradeWorker: Max open positions limit reached; skipping further scans.")
                 break
 
-            # Prevent duplicate position on same symbol
-            if any(p.symbol == sym for p in open_positions):
+            # Prevent duplicate position on same symbol (handling .ifx broker suffixes)
+            clean_sym = sym.replace(".ifx", "").replace(".IFX", "").upper()
+            if any(p.symbol.replace(".ifx", "").replace(".IFX", "").upper() == clean_sym for p in open_positions):
                 continue
 
             # Generate synthetic or model signal
@@ -100,8 +103,12 @@ class SpaceTradeWorker:
                 continue
 
             action = signal["action"]
+            target_symbol = sym
+            if hasattr(self.broker, "resolve_symbol"):
+                target_symbol = self.broker.resolve_symbol(sym)
+
             intent = OrderIntent(
-                symbol=sym,
+                symbol=target_symbol,
                 trade_type=action,
                 lot_size=0.01,
                 magic_number=88123,
@@ -172,3 +179,61 @@ class SpaceTradeWorker:
         finally:
             self.is_running = False
             logger.info("SpaceTradeWorker daemon stopped.")
+
+
+_worker_daemon_thread: threading.Thread | None = None
+_worker_daemon_stop = threading.Event()
+_worker_daemon_lock = threading.Lock()
+
+
+def start_space_trade_worker_daemon(
+    app: Any | None = None,
+    worker: SpaceTradeWorker | None = None,
+    interval_seconds: int = 30,
+) -> threading.Thread | None:
+    """Start SpaceTradeWorker as an in-process background daemon thread."""
+    global _worker_daemon_thread, _worker_daemon_stop
+
+    with _worker_daemon_lock:
+        if _worker_daemon_thread and _worker_daemon_thread.is_alive():
+            return _worker_daemon_thread
+
+        _worker_daemon_stop.clear()
+        active_worker = worker or SpaceTradeWorker()
+
+        def _thread_target():
+            logger.info("SpaceTradeWorker in-process daemon started (interval=%ss)", interval_seconds)
+            while not _worker_daemon_stop.is_set():
+                try:
+                    if app:
+                        with app.app_context():
+                            from ..models import BrokerAccount
+                            from .execution_broker import LiveMetaApiBroker
+
+                            # If user connected broker, attach live broker adapter
+                            acct = BrokerAccount.query.filter_by(is_connected=True).first()
+                            if acct and not isinstance(active_worker.broker, LiveMetaApiBroker):
+                                active_worker.broker = LiveMetaApiBroker(user_id=acct.user_id)
+                            active_worker.run_cycle()
+                    else:
+                        active_worker.run_cycle()
+                except Exception as exc:
+                    logger.error("Error in SpaceTradeWorker daemon cycle: %s", exc)
+
+                sleep_elapsed = 0
+                while sleep_elapsed < interval_seconds and not _worker_daemon_stop.is_set():
+                    time.sleep(1)
+                    sleep_elapsed += 1
+
+            logger.info("SpaceTradeWorker in-process daemon stopped.")
+
+        t = threading.Thread(target=_thread_target, name="SpaceTradeWorkerDaemon", daemon=True)
+        t.start()
+        _worker_daemon_thread = t
+        return t
+
+
+def stop_space_trade_worker_daemon() -> None:
+    """Signal the in-process SpaceTradeWorker daemon thread to stop."""
+    global _worker_daemon_stop
+    _worker_daemon_stop.set()

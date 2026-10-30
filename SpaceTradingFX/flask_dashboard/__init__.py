@@ -65,11 +65,13 @@ def create_app(config_override: Mapping[str, object] | None = None) -> Flask:
     _register_blueprints(app)
     _register_health_endpoints(app)
 
-    # Start non-blocking autonomous trading scheduler in live runtime
+    # Start non-blocking autonomous trading scheduler and unified SpaceTradeWorker in live runtime
     if not app.config.get("TESTING") and (not app.debug or os.environ.get("WERKZEUG_RUN_MAIN") == "true"):
         from .services.autonomous_scanner import start_autonomous_scheduler
+        from .services.trade_worker import start_space_trade_worker_daemon
 
         start_autonomous_scheduler(app)
+        start_space_trade_worker_daemon(app=app, interval_seconds=int(os.environ.get("TRADE_WORKER_INTERVAL", "30")))
 
     return app
 

@@ -268,8 +268,11 @@ def decrypt_broker_password(encrypted_password: str) -> str:
 def get_symbol_spec(symbol: str) -> dict[str, Any]:
     """Retrieve symbol specifications for lot sizing, limits, and filling modes."""
     cleaned = symbol.strip()
+    base_sym = clean_broker_symbol(cleaned)
     if cleaned in DEFAULT_SYMBOL_SPECS:
         return DEFAULT_SYMBOL_SPECS[cleaned]
+    if base_sym in DEFAULT_SYMBOL_SPECS:
+        return DEFAULT_SYMBOL_SPECS[base_sym]
 
     clean_lower = cleaned.lower()
     if "75" in clean_lower and ("volatility" in clean_lower or "hz" in clean_lower):
@@ -405,6 +408,44 @@ def is_ifx_server(server: str) -> bool:
     return "IFX" in s or "IFXBROKERS" in s
 
 
+def get_currency_symbol(currency: str | None) -> str:
+    """Return standard symbol for a currency code."""
+    c = str(currency or "").strip().upper()
+    if not c or c in {"USD", "US DOLLAR", "NONE"}:
+        return "$"
+    symbols = {
+        "ZAR": "R",
+        "USD": "$",
+        "EUR": "€",
+        "GBP": "£",
+        "JPY": "¥",
+        "AUD": "A$",
+        "CAD": "C$",
+    }
+    return symbols.get(c, "$" if c == "USD" else (c if len(c) <= 3 else "$"))
+
+
+def resolve_broker_symbol(symbol: str, server: str | None = None) -> str:
+    """Resolve standard 6-letter or asset symbol to broker-specific suffixed symbol.
+
+    For IFX Brokers accounts (e.g. IFXBrokers-Real), appends '.ifx' (e.g. USDJPY -> USDJPY.ifx).
+    """
+    clean_sym = str(symbol).strip()
+    if clean_sym.lower().endswith(".ifx"):
+        return f"{clean_sym[:-4]}.ifx"
+    if server and is_ifx_server(server):
+        return f"{clean_sym}.ifx"
+    return clean_sym
+
+
+def clean_broker_symbol(symbol: str) -> str:
+    """Strip broker-specific suffixes (.ifx) to get standard symbol."""
+    sym = str(symbol).strip()
+    if sym.lower().endswith(".ifx"):
+        return sym[:-4].upper()
+    return sym.upper()
+
+
 def get_account_currency(server: str) -> tuple[str, str]:
     """Return currency code and symbol based on server and broker conventions.
 
@@ -418,6 +459,186 @@ def get_account_currency(server: str) -> tuple[str, str]:
 
 _METAAPI_TELEMETRY_CACHE: dict[str, tuple[dict[str, Any], float]] = {}
 _METAAPI_POSITIONS_CACHE: dict[str, tuple[list[dict[str, Any]], float]] = {}
+_METAAPI_PROVISIONING_CACHE: dict[str, tuple[list[dict[str, Any]], float]] = {}
+
+
+def resolve_metaapi_provisioning_base_url() -> str:
+    """Resolve MetaApi provisioning API base URL."""
+    custom = None
+    try:
+        from flask import current_app
+
+        if current_app:
+            custom = current_app.config.get("METAAPI_PROVISIONING_URL") or current_app.config.get(
+                "METAAPI_PROVISIONING_HOST"
+            )
+    except Exception:
+        pass
+
+    if not custom:
+        custom = os.environ.get("METAAPI_PROVISIONING_URL") or os.environ.get("METAAPI_PROVISIONING_HOST")
+
+    if custom:
+        clean = custom.strip()
+        if not clean.startswith("http://") and not clean.startswith("https://"):
+            clean = f"https://{clean}"
+        clean = clean.replace("agiliumtrade.agiliumtrade.ai", "agiliumtrade.ai")
+        return clean.rstrip("/")
+
+    return "https://mt-provisioning-api-v1.agiliumtrade.ai"
+
+
+def fetch_metaapi_accounts(
+    token: str | None = None,
+    cache_ttl_seconds: float = 30.0,
+) -> list[dict[str, Any]]:
+    """Query MetaApi Provisioning API (/users/current/accounts) to list registered trading accounts."""
+    token = token or os.environ.get("METAAPI_TOKEN")
+    if not token:
+        return []
+
+    now = time.time()
+    cache_key = f"accounts:{token[-8:]}" if len(token) >= 8 else f"accounts:{token}"
+    if cache_key in _METAAPI_PROVISIONING_CACHE:
+        cached_data, cached_time = _METAAPI_PROVISIONING_CACHE[cache_key]
+        if (now - cached_time) < cache_ttl_seconds:
+            return cached_data
+
+    try:
+        import requests
+
+        prov_base_url = resolve_metaapi_provisioning_base_url()
+        url = f"{prov_base_url}/users/current/accounts"
+        resp = requests.get(url, headers={"auth-token": token}, timeout=5.0)
+        if resp.status_code == 200:
+            payload = resp.json()
+            items = payload if isinstance(payload, list) else payload.get("items", [])
+            _METAAPI_PROVISIONING_CACHE[cache_key] = (items, now)
+            return items
+    except Exception as exc:
+        logger.debug("MetaApi accounts provisioning query failed: {}", exc)
+    return []
+
+
+def match_metaapi_account(
+    accounts: list[dict[str, Any]],
+    login: str | int | None,
+    server: str | None = None,
+) -> dict[str, Any] | None:
+    """Match MT5 login and server to its corresponding MetaApi Account object.
+
+    Tries:
+    1. Exact match on numeric login and matching server name.
+    2. Match on numeric login alone (handles minor server name variations like IFXBrokers-Real vs IFXBrokers-Demo).
+    """
+    if not accounts or not login:
+        return None
+
+    target_login = str(login).strip()
+    target_server = str(server or "").strip().upper()
+
+    # Pass 1: Match both login and server
+    if target_server:
+        for acc in accounts:
+            acc_login = str(acc.get("login") or "").strip()
+            acc_server = str(acc.get("server") or "").strip().upper()
+            if acc_login == target_login and (target_server in acc_server or acc_server in target_server):
+                return acc
+
+    # Pass 2: Match login alone
+    for acc in accounts:
+        acc_login = str(acc.get("login") or "").strip()
+        if acc_login == target_login:
+            return acc
+
+    return None
+
+
+def get_active_metaapi_account_id(
+    user_id: str | None = None,
+    account: Any | None = None,
+    explicit_account_id: str | None = None,
+) -> str | None:
+    """Resolve the active MetaApi Account UUID for a user or broker account.
+
+    Priority:
+    1. Explicit override passed as parameter.
+    2. Session-level override (if in Flask request context).
+    3. Account's cached metaapi_account_id in the database.
+    4. Auto-discovery via MetaApi Provisioning API matching account_login and server.
+    5. Fallback to METAAPI_ACCOUNT_ID environment variable.
+    """
+    if explicit_account_id:
+        return str(explicit_account_id).strip()
+
+    # Check Flask session if in request context
+    try:
+        from flask import session
+
+        if session and session.get("metaapi_account_id"):
+            return str(session["metaapi_account_id"]).strip()
+    except Exception:
+        pass
+
+    from ..models import BrokerAccount
+
+    if account is None and user_id:
+        account = BrokerAccount.query.filter_by(user_id=user_id, is_connected=True).first()
+        if not account:
+            account = BrokerAccount.query.filter_by(user_id=user_id).first()
+
+    if account:
+        cached_id = getattr(account, "metaapi_account_id", None)
+        if cached_id and str(cached_id).strip():
+            return str(cached_id).strip()
+
+        metaapi_token = os.environ.get("METAAPI_TOKEN")
+        if metaapi_token and account.account_login:
+            accounts = fetch_metaapi_accounts(metaapi_token)
+            matched = match_metaapi_account(accounts, account.account_login, account.server)
+            if matched:
+                matched_id = str(matched.get("id") or matched.get("_id") or "").strip()
+                if matched_id:
+                    try:
+                        from ..extensions import db
+
+                        account.metaapi_account_id = matched_id
+                        db.session.commit()
+                    except Exception:
+                        pass
+                    return matched_id
+
+    fallback = os.environ.get("METAAPI_ACCOUNT_ID")
+    return str(fallback).strip() if fallback else None
+
+
+def resolve_metaapi_account_id(
+    user_id: str,
+    login: str | int | None = None,
+    server: str | None = None,
+) -> str | None:
+    """Explicitly resolve and persist MetaApi UUID for a user's MT5 credentials."""
+    metaapi_token = os.environ.get("METAAPI_TOKEN")
+    if not metaapi_token:
+        return os.environ.get("METAAPI_ACCOUNT_ID")
+
+    from ..extensions import db
+    from ..models import BrokerAccount
+
+    account = BrokerAccount.query.filter_by(user_id=user_id).first()
+    target_login = login or (account.account_login if account else None)
+    target_server = server or (account.server if account else None)
+
+    accounts = fetch_metaapi_accounts(metaapi_token)
+    matched = match_metaapi_account(accounts, target_login, target_server)
+    if matched:
+        matched_id = str(matched.get("id") or matched.get("_id") or "").strip()
+        if account and matched_id:
+            account.metaapi_account_id = matched_id
+            db.session.commit()
+        return matched_id
+
+    return getattr(account, "metaapi_account_id", None) or os.environ.get("METAAPI_ACCOUNT_ID")
 
 
 def fetch_metaapi_account_info(
@@ -430,7 +651,7 @@ def fetch_metaapi_account_info(
         return None
 
     token = token or os.environ.get("METAAPI_TOKEN")
-    account_id = account_id or os.environ.get("METAAPI_ACCOUNT_ID")
+    account_id = account_id or get_active_metaapi_account_id()
     if not token or not account_id:
         return None
 
@@ -466,7 +687,7 @@ def fetch_metaapi_positions(
         return None
 
     token = token or os.environ.get("METAAPI_TOKEN")
-    account_id = account_id or os.environ.get("METAAPI_ACCOUNT_ID")
+    account_id = account_id or get_active_metaapi_account_id()
     if not token or not account_id:
         return None
 
@@ -505,8 +726,9 @@ def sync_broker_positions(user_id: str, positions: list[dict[str, Any]] | None =
     meta_positions = positions
     if meta_positions is None and not (current_app and current_app.config.get("TESTING")):
         meta_token = os.environ.get("METAAPI_TOKEN")
-        meta_acc_id = os.environ.get("METAAPI_ACCOUNT_ID")
-        meta_positions = fetch_metaapi_positions(meta_acc_id, meta_token)
+        meta_acc_id = get_active_metaapi_account_id(user_id=user_id, account=account)
+        if meta_acc_id and meta_token:
+            meta_positions = fetch_metaapi_positions(meta_acc_id, meta_token)
 
     if meta_positions is not None:
         seen_tickets: set[str] = set()
@@ -514,7 +736,7 @@ def sync_broker_positions(user_id: str, positions: list[dict[str, Any]] | None =
             ticket = str(pos.get("id"))
             seen_tickets.add(ticket)
             sym_raw = str(pos.get("symbol", "EURUSD"))
-            clean_sym = sym_raw.replace(".ifx", "").upper()
+            clean_sym = clean_broker_symbol(sym_raw)
             pos_type = "BUY" if "BUY" in str(pos.get("type", "BUY")).upper() else "SELL"
             vol = Decimal(f"{float(pos.get('volume', 0.01)):.2f}")
             open_price = Decimal(f"{float(pos.get('openPrice', 0.0)):.5f}")
@@ -611,8 +833,9 @@ def get_broker_telemetry(user_id: str) -> dict[str, Any]:
     meta_info = None
     if not (current_app and current_app.config.get("TESTING")):
         meta_token = os.environ.get("METAAPI_TOKEN")
-        meta_acc_id = os.environ.get("METAAPI_ACCOUNT_ID")
-        meta_info = fetch_metaapi_account_info(meta_acc_id, meta_token)
+        meta_acc_id = get_active_metaapi_account_id(user_id=user_id, account=account)
+        if meta_acc_id and meta_token:
+            meta_info = fetch_metaapi_account_info(meta_acc_id, meta_token)
 
     if meta_info:
         raw_bal = float(meta_info.get("balance", 0.0))
@@ -633,12 +856,18 @@ def get_broker_telemetry(user_id: str) -> dict[str, Any]:
         free_margin = max(Decimal("0.00"), Decimal(f"{free_margin_val:.2f}"))
 
         floating_pnl = Decimal(f"{(api_equity - raw_bal):.2f}")
-        currency = str(meta_info.get("currency", "USD")).upper()
-        currency_symbol = "R" if currency == "ZAR" else "$"
+        raw_curr = meta_info.get("currency")
+        if raw_curr and str(raw_curr).strip():
+            currency = str(raw_curr).strip().upper()
+        elif account and (is_ifx_server(account.server) or str(account.account_login).strip() == "2160203"):
+            currency = "ZAR"
+        else:
+            currency = "USD"
+        currency_symbol = get_currency_symbol(currency)
     else:
         if getattr(account, "currency", None):
             currency = str(account.currency)
-            currency_symbol = "R" if currency == "ZAR" else "$"
+            currency_symbol = get_currency_symbol(currency)
         else:
             currency, currency_symbol = get_account_currency(account.server)
 
@@ -1210,7 +1439,7 @@ def execute_robot_trade(
 
     # 3. MetaApi Cloud SDK / REST Execution (Linux / Cloud)
     metaapi_token = os.environ.get("METAAPI_TOKEN")
-    metaapi_account_id = os.environ.get("METAAPI_ACCOUNT_ID")
+    metaapi_account_id = get_active_metaapi_account_id(user_id=user_id, account=account)
     if metaapi_token and metaapi_account_id and not current_app.config.get("TESTING"):
         try:
             import requests
@@ -1218,9 +1447,7 @@ def execute_robot_trade(
             client_base_url = resolve_metaapi_client_base_url()
             trade_url = f"{client_base_url}/users/current/accounts/{metaapi_account_id}/trade"
 
-            trade_symbol = symbol
-            if is_ifx_server(account.server) and not trade_symbol.endswith(".ifx"):
-                trade_symbol = f"{trade_symbol}.ifx"
+            trade_symbol = resolve_broker_symbol(symbol, account.server)
 
             resp = requests.post(
                 trade_url,

@@ -334,6 +334,7 @@ class BrokerAccount(db.Model):
     balance = db.Column(Numeric(12, 2), default=0, nullable=False)
     equity = db.Column(Numeric(12, 2), default=0, nullable=False)
     free_margin = db.Column(Numeric(12, 2), default=0, nullable=False)
+    metaapi_account_id = db.Column(db.String(100), nullable=True)
     last_synced_at = db.Column(db.DateTime(timezone=True), nullable=True)
     created_at = db.Column(db.DateTime(timezone=True), default=utcnow, nullable=False)
     updated_at = db.Column(db.DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)

@@ -3,6 +3,7 @@ Mobile Blueprint
 Handles all mobile-optimized routes (/m/*)
 """
 
+import os
 from decimal import Decimal, InvalidOperation
 
 from flask import Blueprint, current_app, flash, jsonify, redirect, render_template, request, url_for
@@ -402,12 +403,17 @@ def profile():
 @login_required
 def connect_broker():
     """Connect or update MT4/MT5 broker account credentials."""
+    from flask import session
+
     from ..extensions import db
     from ..models import BrokerAccount, utcnow
     from ..services.broker_bridge import (
         BrokerConnectionError,
         BrokerValidationError,
         encrypt_broker_password,
+        fetch_metaapi_accounts,
+        get_broker_telemetry,
+        resolve_metaapi_account_id,
         verify_and_connect,
     )
 
@@ -422,11 +428,46 @@ def connect_broker():
                 flash("Broker account disconnected successfully.", "info")
             return redirect(url_for("mobile.connect_broker"))
 
+        if action == "switch_account":
+            target_acc_id = str(request.form.get("switch_account_id") or "").strip()
+            target_login = str(request.form.get("switch_login") or "").strip()
+            target_server = str(request.form.get("switch_server") or "IFXBrokers-Real").strip()
+
+            if not broker_account:
+                broker_account = BrokerAccount(
+                    user_id=current_user.id,
+                    encrypted_password=encrypt_broker_password("managed_cloud_account"),
+                    platform="MT5",
+                    server=target_server or "IFXBrokers-Real",
+                    account_login=target_login or "0",
+                )
+                db.session.add(broker_account)
+
+            if target_login:
+                broker_account.account_login = target_login
+            if target_server:
+                broker_account.server = target_server
+            if target_acc_id:
+                broker_account.metaapi_account_id = target_acc_id
+                session["metaapi_account_id"] = target_acc_id
+
+            broker_account.is_connected = True
+            db.session.commit()
+
+            # Refresh telemetry for selected account
+            get_broker_telemetry(current_user.id)
+            flash(
+                f"Switched active broker account to {broker_account.account_login} ({broker_account.server})!",
+                "success",
+            )
+            return redirect(url_for("mobile.connect_broker"))
+
         # Thoroughly strip all leading and trailing whitespace from input credentials
         platform = str(request.form.get("platform", "MT5") or "").strip().upper()
         server = str(request.form.get("server", "") or "").strip()
         login = str(request.form.get("login", "") or "").strip()
         password = str(request.form.get("password", "") or "").strip()
+        metaapi_override = str(request.form.get("metaapi_account_id") or "").strip()
 
         if platform not in {"MT4", "MT5"}:
             flash("Please select MetaTrader 4 (MT4) or MetaTrader 5 (MT5).", "error")
@@ -475,8 +516,21 @@ def connect_broker():
         broker_account.balance = bal_val
         broker_account.equity = Decimal(str(conn_info.get("equity", bal_val)))
         broker_account.free_margin = Decimal(str(conn_info.get("free_margin", broker_account.equity)))
+
+        if metaapi_override:
+            broker_account.metaapi_account_id = metaapi_override
+            session["metaapi_account_id"] = metaapi_override
+        else:
+            resolved_id = resolve_metaapi_account_id(current_user.id, login, server)
+            if resolved_id:
+                broker_account.metaapi_account_id = resolved_id
+                session["metaapi_account_id"] = resolved_id
+
         broker_account.last_synced_at = utcnow()
         db.session.commit()
+
+        # Update telemetry
+        get_broker_telemetry(current_user.id)
 
         flash(
             f"Successfully connected to {server} ({platform})! Automated robot signals will execute on your account.",
@@ -484,7 +538,44 @@ def connect_broker():
         )
         return redirect(url_for("mobile.profile"))
 
-    return render_template("mobile_connect_broker.html", broker_account=broker_account, active_page="profile")
+    # Discover MetaApi registered accounts for quick-toggle
+    discovered_accounts = []
+    metaapi_token = os.environ.get("METAAPI_TOKEN")
+    if metaapi_token:
+        try:
+            raw_accs = fetch_metaapi_accounts(metaapi_token)
+            active_id = getattr(broker_account, "metaapi_account_id", None) if broker_account else None
+            for acc in raw_accs:
+                acc_id = str(acc.get("id") or acc.get("_id") or "")
+                acc_login = str(acc.get("login") or "")
+                acc_server = str(acc.get("server") or "")
+                acc_name = acc.get("name") or f"Account {acc_login}"
+                acc_type = str(acc.get("type") or "cloud")
+                acc_state = str(acc.get("state") or "")
+                is_active = bool(
+                    (active_id and acc_id == active_id)
+                    or (broker_account and str(broker_account.account_login) == acc_login)
+                )
+                discovered_accounts.append(
+                    {
+                        "id": acc_id,
+                        "login": acc_login,
+                        "server": acc_server,
+                        "name": acc_name,
+                        "type": acc_type,
+                        "state": acc_state,
+                        "is_active": is_active,
+                    }
+                )
+        except Exception as exc:
+            current_app.logger.debug("Failed discovering MetaApi accounts: %s", exc)
+
+    return render_template(
+        "mobile_connect_broker.html",
+        broker_account=broker_account,
+        discovered_accounts=discovered_accounts,
+        active_page="profile",
+    )
 
 
 @mobile_bp.route("/api/broker/telemetry")

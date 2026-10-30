@@ -396,6 +396,12 @@
                 <span class="lbl">Last Synced</span>
                 <span class="val">{{ broker_account.last_synced_at.strftime('%H:%M:%S UTC') if broker_account.last_synced_at else 'Just now' }}</span>
             </div>
+            {% if broker_account.metaapi_account_id %}
+            <div class="live-grid-item" style="grid-column: span 2;">
+                <span class="lbl">MetaApi UUID</span>
+                <span class="val" style="font-family: monospace; font-size: 11px; word-break: break-all;">{{ broker_account.metaapi_account_id }}</span>
+            </div>
+            {% endif %}
         </div>
 
         <!-- Live Verification Ping Trade Action -->
@@ -411,6 +417,53 @@
                 <i class="fas fa-unlink"></i> Disconnect This Account
             </button>
         </form>
+    </div>
+    {% endif %}
+
+    <!-- Discovered MetaApi Cloud Accounts (Single-Click Switch) -->
+    {% if discovered_accounts %}
+    <div style="background: linear-gradient(145deg, #111827, #1f2937); border: 1px solid rgba(245, 158, 11, 0.4); border-radius: 16px; padding: 16px; margin-bottom: 20px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 8px;">
+            <span style="font-weight: 800; font-size: 13px; color: #F59E0B; letter-spacing: 0.5px;">
+                <i class="fas fa-satellite-dish"></i> Discovered MetaApi Accounts
+            </span>
+            <span style="font-size: 11px; color: rgba(255,255,255,0.6);">Single-Click Switch</span>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 10px;">
+            {% for acc in discovered_accounts %}
+            <div style="display: flex; align-items: center; justify-content: space-between; background: rgba(0,0,0,0.3); border: 1px solid {% if acc.is_active %}#4CAF50{% else %}rgba(255,255,255,0.1){% endif %}; border-radius: 12px; padding: 10px 12px;">
+                <div>
+                    <div style="display: flex; align-items: center; gap: 6px;">
+                        <strong style="color: #FFF; font-size: 13px;">Login {{ acc.login }}</strong>
+                        <span style="font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 6px; {% if 'demo' in acc.name.lower() or 'demo' in acc.server.lower() %}background: rgba(96,165,250,0.2); color: #60A5FA;{% else %}background: rgba(16,185,129,0.2); color: #10B981;{% endif %}">
+                            {% if 'demo' in acc.name.lower() or 'demo' in acc.server.lower() %}DEMO{% else %}REAL{% endif %}
+                        </span>
+                    </div>
+                    <div style="font-size: 11px; color: rgba(255,255,255,0.6); margin-top: 2px;">
+                        {{ acc.server }} · <span style="font-family: monospace; font-size: 10px;">{{ acc.id[:8] }}...{{ acc.id[-6:] }}</span>
+                    </div>
+                </div>
+                <div>
+                    {% if acc.is_active %}
+                    <span style="display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 700; color: #4CAF50; background: rgba(76,175,80,0.15); padding: 4px 10px; border-radius: 14px; border: 1px solid #4CAF50;">
+                        <span class="status-dot"></span> Active
+                    </span>
+                    {% else %}
+                    <form method="POST" action="{{ url_for('mobile.connect_broker') }}" style="margin: 0;">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="action" value="switch_account">
+                        <input type="hidden" name="switch_account_id" value="{{ acc.id }}">
+                        <input type="hidden" name="switch_login" value="{{ acc.login }}">
+                        <input type="hidden" name="switch_server" value="{{ acc.server }}">
+                        <button type="submit" style="background: linear-gradient(135deg, #F59E0B, #D97706); color: #0F172A; border: none; font-size: 11px; font-weight: 800; padding: 6px 12px; border-radius: 8px; cursor: pointer;">
+                            Switch <i class="fas fa-arrow-right" style="font-size: 9px;"></i>
+                        </button>
+                    </form>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
     </div>
     {% endif %}
 
@@ -527,6 +580,26 @@
                     <button type="button" class="toggle-password-btn" id="togglePasswordBtn" aria-label="Toggle password visibility">
                         <i class="fas fa-eye" id="togglePasswordIcon"></i>
                     </button>
+                </div>
+            </div>
+
+            <!-- Field 5: Optional MetaApi Account ID Override -->
+            <div class="form-group">
+                <label class="form-label" for="metaapiAccountIdInput">
+                    MetaApi Account ID <span style="font-size: 11px; color: rgba(255,255,255,0.45); font-weight: normal;">(Optional Cloud UUID Override)</span>
+                </label>
+                <div class="input-wrapper">
+                    <i class="fas fa-fingerprint input-icon"></i>
+                    <input 
+                        type="text" 
+                        class="form-control" 
+                        id="metaapiAccountIdInput" 
+                        name="metaapi_account_id" 
+                        placeholder="e.g. bace56c1-5847-4977-9ca6-53818e11a2f6"
+                        value="{{ broker_account.metaapi_account_id if broker_account and broker_account.metaapi_account_id else '' }}" 
+                        autocomplete="off"
+                        spellcheck="false"
+                    >
                 </div>
             </div>
 

@@ -375,8 +375,51 @@ function resetCircuitBreaker() {
     });
 }
 
+function initTelemetryStream() {
+    if (window.EventSource) {
+        try {
+            const evtSource = new EventSource('/api/stream/telemetry');
+            evtSource.addEventListener('telemetry', function(e) {
+                try {
+                    const data = JSON.parse(e.data);
+                    if (data && data.connected) {
+                        const balEl = document.getElementById('telemetry-balance');
+                        const eqEl = document.getElementById('telemetry-equity');
+                        const fmEl = document.getElementById('telemetry-free-margin');
+                        const curLabel = document.getElementById('telemetry-currency-label');
+                        const actEl = document.getElementById('metric-active-trades');
+                        const curr = data.currency || (data.currency_symbol === 'R' ? 'ZAR' : 'USD');
+                        const sym = data.currency_symbol || (curr === 'ZAR' ? 'R' : '$');
+
+                        if (balEl && typeof data.balance === 'number') {
+                            balEl.textContent = `${sym}${data.balance.toFixed(2)}`;
+                        }
+                        if (eqEl && typeof data.equity === 'number') {
+                            eqEl.textContent = `${sym}${data.equity.toFixed(2)}`;
+                        }
+                        if (fmEl && typeof data.free_margin === 'number') {
+                            fmEl.textContent = `${sym}${data.free_margin.toFixed(2)}`;
+                        }
+                        if (curLabel) {
+                            curLabel.textContent = `LIVE TELEMETRY (${curr})`;
+                        }
+                        if (actEl && typeof data.active_trades === 'number') {
+                            actEl.textContent = data.active_trades;
+                        }
+                    }
+                } catch(err) {
+                    console.debug('SSE parse error:', err);
+                }
+            });
+        } catch(err) {
+            console.debug('EventSource init error:', err);
+        }
+    }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     refreshTelemetry();
+    initTelemetryStream();
     setInterval(refreshTelemetry, 5000);
 });
 </script>

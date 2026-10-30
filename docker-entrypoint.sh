@@ -28,5 +28,5 @@ if [ "${1:-}" = "paper-worker" ]; then
   exec python -m flask_dashboard.paper_worker --interval "${PAPER_WORKER_INTERVAL:-30}"
 fi
 
-exec gunicorn --bind 0.0.0.0:8000 --workers 4 --threads 2 --timeout 120 \
+exec gunicorn --bind "0.0.0.0:${PORT:-8000}" --workers 4 --threads 2 --timeout 120 \
   --access-logfile - --error-logfile - --capture-output 'flask_dashboard:create_app()'

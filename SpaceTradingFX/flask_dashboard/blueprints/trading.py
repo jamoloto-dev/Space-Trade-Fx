@@ -556,6 +556,96 @@ def api_broker_telemetry_alias():
     )
 
 
+@trading_bp.route("/api/broker/accounts", methods=["GET"])
+@login_required
+def api_broker_accounts():
+    """Discover available MetaApi accounts from the provisioning registry."""
+    from ..models import BrokerAccount
+    from ..services.broker_bridge import (
+        fetch_metaapi_accounts,
+        get_active_metaapi_account_id,
+    )
+
+    account = BrokerAccount.query.filter_by(user_id=current_user.id, is_connected=True).first()
+    active_uuid = get_active_metaapi_account_id(user_id=current_user.id, account=account)
+    raw_accounts = fetch_metaapi_accounts()
+
+    formatted = []
+    for acc in raw_accounts:
+        acc_id = str(acc.get("id") or acc.get("_id") or "")
+        acc_login = str(acc.get("login") or "")
+        acc_server = str(acc.get("server") or "")
+        formatted.append(
+            {
+                "id": acc_id,
+                "login": acc_login,
+                "server": acc_server,
+                "name": acc.get("name") or f"Account {acc_login}",
+                "type": acc.get("type") or "cloud",
+                "state": acc.get("state") or "",
+                "is_active": (acc_id == active_uuid or (account and str(account.account_login) == acc_login)),
+            }
+        )
+
+    return jsonify({"success": True, "accounts": formatted, "active_account_id": active_uuid})
+
+
+@trading_bp.route("/api/broker/switch-account", methods=["POST"])
+@login_required
+def api_broker_switch_account():
+    """Dynamically switch active MetaApi MT5 account (Demo vs. Real)."""
+    from flask import session
+
+    from ..extensions import db
+    from ..models import BrokerAccount
+    from ..services.broker_bridge import get_broker_telemetry
+
+    data = request.get_json(silent=True) or request.form
+    target_meta_id = str(data.get("metaapi_account_id") or data.get("id") or "").strip()
+    target_login = str(data.get("login") or data.get("account_login") or "").strip()
+    target_server = str(data.get("server") or "").strip()
+
+    account = BrokerAccount.query.filter_by(user_id=current_user.id).first()
+    if not account:
+        from ..services.broker_bridge import encrypt_broker_password
+
+        account = BrokerAccount(
+            user_id=current_user.id,
+            encrypted_password=encrypt_broker_password("managed_cloud_account"),
+            platform="MT5",
+            server=target_server or "IFXBrokers-Real",
+            account_login=target_login or "0",
+        )
+        db.session.add(account)
+
+    if target_meta_id:
+        account.metaapi_account_id = target_meta_id
+        session["metaapi_account_id"] = target_meta_id
+    if target_login:
+        account.account_login = target_login
+    if target_server:
+        account.server = target_server
+
+    account.is_connected = True
+    db.session.commit()
+
+    tele = get_broker_telemetry(current_user.id)
+    return jsonify(
+        {
+            "success": True,
+            "message": f"Switched to broker account {account.account_login} ({account.server})",
+            "active_account_id": account.metaapi_account_id,
+            "telemetry": {
+                "balance": float(tele.get("balance", 0.0)),
+                "equity": float(tele.get("equity", 0.0)),
+                "free_margin": float(tele.get("free_margin", 0.0)),
+                "currency": tele.get("currency", "USD"),
+                "currency_symbol": tele.get("currency_symbol", "$"),
+            },
+        }
+    )
+
+
 @trading_bp.route("/api/stream/telemetry", methods=["GET"])
 def stream_telemetry():
     """Server-Sent Events (SSE) endpoint delivering real-time account telemetry and positions without polling."""
@@ -581,6 +671,7 @@ def stream_telemetry():
                     "balance": float(tele.get("balance", 16.55)),
                     "equity": float(tele.get("equity", 26.09)),
                     "free_margin": float(tele.get("free_margin", 19.84)),
+                    "currency": str(tele.get("currency", "USD")),
                     "currency_symbol": str(tele.get("currency_symbol", "$")),
                     "active_trades": int(tele.get("active_trades", 0)),
                     "positions": tele.get("positions", []),

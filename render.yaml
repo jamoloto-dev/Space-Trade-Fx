@@ -1,33 +1,40 @@
-# Render Blueprint Specification for QuantBot & SpaceTradingFX
+# Render Blueprint Specification for SpaceTradingFX
 # Docs: https://render.com/docs/blueprint-spec
 
 services:
   # ---------------------------------------------------------------------------
-  # Recipe 4: Background Worker - QuantBot MetaApi Autonomous Trading Robot
+  # Primary Web Service - Space-Trade-Fx (Public Institutional Trading Platform)
   # ---------------------------------------------------------------------------
-  - type: worker
-    name: quantbot-background-worker
-    runtime: python
+  - type: web
+    name: space-trade-fx
+    runtime: docker
     region: frankfurt
-    plan: starter # Render background workers require a paid plan (starter or higher)
-    buildCommand: pip install --upgrade pip && pip install -r requirements.txt
-    startCommand: python metaapi_robot.py --loop --interval 30 --cooldown 60 --no-auto-be --min-confidence 65.0 --symbols EURUSD.ifx,GBPUSD.ifx,USDJPY.ifx
+    plan: starter
+    healthCheckPath: /health/live
     envVars:
-      - key: PYTHON_VERSION
-        value: 3.12.3
-      - key: METAAPI_TOKEN
-        sync: false # Set securely in Render dashboard
-      - key: ACCOUNT_ID
-        sync: false # Set securely in Render dashboard
-      - key: METAAPI_ACCOUNT_ID
-        sync: false # Alias for account ID
-      - key: FLASK_SECRET_KEY
+      - key: FLASK_ENV
+        value: production
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: SECRET_KEY
         generateValue: true
       - key: DATABASE_URL
         sync: false
+      - key: METAAPI_TOKEN
+        sync: false
+      - key: METAAPI_ACCOUNT_ID
+        sync: false
+      - key: METAAPI_REGION
+        value: london
+      - key: MARKET_DATA_PROVIDER
+        value: simulation
+      - key: ENABLE_SPACE_TRADE_WORKER
+        value: "true"
+      - key: TRADE_WORKER_INTERVAL
+        value: "30"
 
   # ---------------------------------------------------------------------------
-  # Recipe 3: Advanced Telemetry & Visualization Terminal (Streamlit)
+  # Secondary Telemetry & Visualization Terminal (Streamlit)
   # ---------------------------------------------------------------------------
   - type: web
     name: quantbot-dashboard

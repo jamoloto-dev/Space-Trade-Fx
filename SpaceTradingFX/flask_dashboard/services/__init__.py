@@ -64,16 +64,24 @@ from .broker_bridge import (
     BrokerError,
     BrokerExecutionError,
     BrokerValidationError,
+    clean_broker_symbol,
     decrypt_broker_password,
     dispatch_test_ping_trade,
     encrypt_broker_password,
     execute_robot_trade,
+    fetch_metaapi_accounts,
     fetch_metaapi_positions,
     get_account_currency,
+    get_active_metaapi_account_id,
     get_broker_telemetry,
+    get_currency_symbol,
     get_symbol_spec,
+    match_metaapi_account,
     normalize_volume,
+    resolve_broker_symbol,
     resolve_filling_mode,
+    resolve_metaapi_account_id,
+    resolve_metaapi_provisioning_base_url,
     sync_broker_positions,
     verify_and_connect,
 )
@@ -107,7 +115,11 @@ from .strategy_transpiler import (
     SpaceTradeStrategyTranspiler,
     SpaceTradeTranspilationResult,
 )
-from .trade_worker import SpaceTradeWorker
+from .trade_worker import (
+    SpaceTradeWorker,
+    start_space_trade_worker_daemon,
+    stop_space_trade_worker_daemon,
+)
 
 __all__ = [
     # Notifications
@@ -173,6 +185,14 @@ __all__ = [
     "resolve_filling_mode",
     "get_symbol_spec",
     "dispatch_test_ping_trade",
+    "clean_broker_symbol",
+    "resolve_broker_symbol",
+    "get_currency_symbol",
+    "fetch_metaapi_accounts",
+    "match_metaapi_account",
+    "get_active_metaapi_account_id",
+    "resolve_metaapi_account_id",
+    "resolve_metaapi_provisioning_base_url",
     # News & Macro Intelligence
     "MacroNewsEngine",
     "check_ai_veto",
@@ -205,4 +225,6 @@ __all__ = [
     "RiskLimits",
     "RiskAssessmentResult",
     "SpaceTradeWorker",
+    "start_space_trade_worker_daemon",
+    "stop_space_trade_worker_daemon",
 ]
