@@ -121,7 +121,9 @@ def seed_database(app=None) -> None:
                     features=prof_features,
                 )
                 db.session.add(lic)
-                logger.info("Provisioned active Professional License: %s (expires: %s)", lic_key, valid_until.isoformat())
+                logger.info(
+                    "Provisioned active Professional License: %s (expires: %s)", lic_key, valid_until.isoformat()
+                )
             else:
                 lic.user_id = user.id
                 lic.license_type = "professional"
