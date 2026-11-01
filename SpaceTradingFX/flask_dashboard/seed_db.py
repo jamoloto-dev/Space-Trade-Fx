@@ -14,24 +14,16 @@ from datetime import timedelta
 from decimal import Decimal
 from uuid import uuid4
 
+from . import create_app
+from .extensions import db
+from .models import BrokerAccount, License, TradingPreference, User, utcnow
+from .services.broker_bridge import encrypt_broker_password
+
 logging.basicConfig(level=logging.INFO, format="[%(asctime)s] [%(levelname)s] [seeder] %(message)s")
 logger = logging.getLogger("seed_db")
 
 
 def seed_database(app=None) -> None:
-    # Avoid import-time database connection before app context
-    try:
-        from . import create_app
-        from .extensions import db
-        from .models import BrokerAccount, License, TradingPreference, User, utcnow
-        from .services.broker_bridge import encrypt_broker_password
-    except ImportError:
-        # Fallback when executed as top-level script
-        from SpaceTradingFX.flask_dashboard import create_app
-        from SpaceTradingFX.flask_dashboard.extensions import db
-        from SpaceTradingFX.flask_dashboard.models import BrokerAccount, License, TradingPreference, User, utcnow
-        from SpaceTradingFX.flask_dashboard.services.broker_bridge import encrypt_broker_password
-
     admin_email = os.environ.get("ADMIN_EMAIL", "molotojafta30@gmail.com").strip().lower()
     admin_password = os.environ.get("ADMIN_PASSWORD", "Javalaava301%").strip()
     admin_first_name = os.environ.get("ADMIN_FIRST_NAME", "Jafta").strip()
