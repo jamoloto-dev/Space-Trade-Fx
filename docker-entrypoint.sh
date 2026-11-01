@@ -32,6 +32,9 @@ fi
 # until the transactional Alembic upgrade has completed successfully.
 alembic upgrade head
 
+# Automatically ensure administrative user, active license, and preferences exist
+python -m flask_dashboard.seed_db
+
 # The lifecycle worker is an explicitly selected, separate process.  It is
 # never spawned by Gunicorn or Flask's development reloader.
 if [ "${1:-}" = "paper-worker" ]; then

@@ -40,7 +40,7 @@ ENV PATH="/opt/venv/bin:$PATH"
 
 # Copy application code
 COPY SpaceTradingFX/flask_dashboard ./flask_dashboard
-COPY SpaceTradingFX/requirements.txt alembic.ini docker-entrypoint.sh ./
+COPY SpaceTradingFX/requirements.txt alembic.ini docker-entrypoint.sh seed_db.py ./
 COPY migrations ./migrations
 COPY trading_state.py ./
 COPY models ./models
